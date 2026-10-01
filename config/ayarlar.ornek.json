@@ -1,0 +1,17 @@
+{
+  "api_url": "",
+  "api_key": "",
+  "gonderim_araligi_sn": 60,
+  "ikinci_cekim_gecikme_sn": 5,
+  "format": "avif",
+  "kalite": 85,
+  "kameralar": [
+    {
+      "kod": "K1",
+      "yatak": "Y1",
+      "tip": "webcam",
+      "kaynak": 0,
+      "aktif": true
+    }
+  ]
+}

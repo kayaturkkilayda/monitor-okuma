@@ -1,0 +1,36 @@
+.venv/
+__pycache__/
+goruntuler/
+loglar/
+config/ayarlar.json
+.env
+*.jpg
+*.png
+*.avif
+# Python artifacts
+**/__pycache__/
+*.pyc
+.pytest_cache/
+
+# Build outputs and IDE files
+build/
+dist/
+*.spec
+.vscode/
+*.exe
+
+# Test/runtime output and temporary files
+test-output/
+test-results/
+tmp/
+temp/
+hatali/
+bekleyen/
+*.tmp
+*.temp
+durum.json
+
+# Secrets
+.env.*
+*.pem
+*.key
