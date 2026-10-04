@@ -9,11 +9,13 @@ KOK = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__f
 os.chdir(KOK)
 sys.path.insert(0, str(KOK / "src"))
 
-from ayarlar import AYAR_DOSYASI, ayarlari_oku, kameralari_olustur
+from ayarlar import AYAR_DOSYASI, ayarlari_oku, degisen_alanlar, kameralari_olustur
 from durum import KameraDurumu
+from gecis import eski_kuyrugu_aktar, veritabanini_guncelle
 from gonderici import gonderici_dongusu
 from log import log_kur
 from temizlik import temizlik_dongusu
+from veritabani import olay
 from zamanlayici import baslat
 
 KONTROL_SN = 5
@@ -25,7 +27,7 @@ durum = KameraDurumu(log)
 def calistir(ayarlar: dict):
     """Kameraları, göndericiyi ve temizliği başlatır."""
     kameralar = kameralari_olustur(ayarlar)
-    log.info(f"{ayarlar['tesis_kodu']} | {len(kameralar)} kamera başlatılıyor")
+    olay(log, "INFO", "sistem", f"{ayarlar['tesis_kodu']} | {len(kameralar)} kamera başlatılıyor")
     dur, is_parcaciklari = baslat(kameralar, ayarlar, log, durum)
 
     if ayarlar["api_url"]:
@@ -34,7 +36,7 @@ def calistir(ayarlar: dict):
         g.start()
         is_parcaciklari.append(g)
     else:
-        log.warning("api_url boş; görüntüler bekleyen/ klasöründe birikecek")
+        olay(log, "WARNING", "sistem", "api_url boş; görüntüler kuyrukta birikecek")
 
     t = threading.Thread(target=temizlik_dongusu, args=(ayarlar, log, dur),
                          name="temizlik", daemon=True)
@@ -56,6 +58,15 @@ def degisim_zamani() -> float | None:
         return None
 
 
+olay(log, "INFO", "sistem", "Motor başladı")
+try:
+    veritabanini_guncelle(log)
+except Exception:
+    # Yarım dönüşümle çalışmaktansa dur; Görev Zamanlayıcı yeniden başlatınca tekrar denenir
+    olay(log, "ERROR", "sistem", "Veritabanı yeni biçime çevrilemedi, motor durduruluyor",
+         ayrinti=True)
+    raise
+eski_kuyrugu_aktar(log)
 ayarlar = ayarlari_oku()
 son_degisim = degisim_zamani()
 dur, is_parcaciklari = calistir(ayarlar)
@@ -73,15 +84,17 @@ try:
             yeni = ayarlari_oku()
             kameralari_olustur(yeni)
         except Exception:
-            log.exception("Yeni ayarlar okunamadı, eski ayarlarla devam ediliyor")
+            olay(log, "ERROR", "sistem", "Yeni ayarlar okunamadı, eski ayarlarla devam ediliyor",
+                 ayrinti=True)
             continue
 
-        log.info("Ayarlar değişti, yeniden başlatılıyor...")
+        degisen = ", ".join(degisen_alanlar(ayarlar, yeni)) or "yok"
+        olay(log, "INFO", "sistem", f"Ayarlar değişti (değişen: {degisen}), yeniden başlatılıyor...")
         durdur(dur, is_parcaciklari)
         ayarlar = yeni
         dur, is_parcaciklari = calistir(ayarlar)
 
 except KeyboardInterrupt:
-    log.info("Durduruluyor...")
+    olay(log, "INFO", "sistem", "Motor durduruluyor...")
     durdur(dur, is_parcaciklari)
-    log.info("Durduruldu")
+    olay(log, "INFO", "sistem", "Motor durduruldu")

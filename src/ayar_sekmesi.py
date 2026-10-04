@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from ayarlar import ayarlari_yaz
+from veritabani import KAYIT_SAKLAMA_GUN
 
 # (ayar adı, ekranda görünen ad, alan türü)
 SATIRLAR = [
@@ -14,7 +15,11 @@ SATIRLAR = [
     ("format", "Görüntü formatı", "secim"),
     ("kalite", "Kalite (1-100)", "metin"),
     ("saklama_gun", "Sahipsiz dosya saklama (gün)", "metin"),
+    ("kayit_saklama_gun", "Gönderim kaydı saklama (gün)", "metin"),
 ]
+
+# Eski ayar dosyalarında olmayan alanlar için ekranda gösterilecek değer
+VARSAYILANLAR = {"kayit_saklama_gun": KAYIT_SAKLAMA_GUN}
 
 # (ayar adı, en az, en çok)
 SAYI_SINIRLARI = [
@@ -22,6 +27,7 @@ SAYI_SINIRLARI = [
     ("ikinci_cekim_gecikme_sn", 1, 60),
     ("kalite", 1, 100),
     ("saklama_gun", 1, 365),
+    ("kayit_saklama_gun", 1, 3650),
 ]
 
 
@@ -34,7 +40,7 @@ class AyarSekmesi(ttk.Frame):
 
         for i, (ad, etiket, tur) in enumerate(SATIRLAR):
             ttk.Label(self, text=etiket).grid(row=i, column=0, sticky="w", pady=5, padx=(0, 15))
-            deger = tk.StringVar(value=str(ayarlar.get(ad, "")))
+            deger = tk.StringVar(value=str(ayarlar.get(ad, VARSAYILANLAR.get(ad, ""))))
             if tur == "secim":
                 alan = ttk.Combobox(self, textvariable=deger, values=["avif", "jpg"],
                                     state="readonly", width=47)

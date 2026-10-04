@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from ayarlar import ayarlari_oku, ayarlari_yaz, kameralari_olustur
+from ayarlar import ayarlari_oku, ayarlari_yaz, degisen_alanlar, kameralari_olustur
 from kamera import IPKamera, Kamera
 
 
@@ -94,3 +94,14 @@ def test_eski_duz_metin_dosya_okunabilir(tmp_path):
                                         "adres": "http://x", "sifre": "eski"}])),
                      encoding="utf-8")
     assert ayarlari_oku(dosya)["kameralar"][0]["sifre"] == "eski"    
+
+def test_degisen_alanlar_yalnizca_adlari_verir():
+    eski = {"tesis_kodu": "H01", "api_key": "EskiAnahtar", "kalite": 85}
+    yeni = {"tesis_kodu": "H01", "api_key": "YeniAnahtar", "kalite": 60, "kayit_saklama_gun": 30}
+    degisen = degisen_alanlar(eski, yeni)
+    assert degisen == ["api_key", "kalite", "kayit_saklama_gun"]
+    assert "EskiAnahtar" not in str(degisen) and "YeniAnahtar" not in str(degisen)
+
+
+def test_hicbir_sey_degismediyse_bos_liste():
+    assert degisen_alanlar({"a": 1}, {"a": 1}) == []

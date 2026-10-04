@@ -1,31 +1,25 @@
-"""Eski görüntülerin temizlenmesi."""
-import json
+"""Eski görüntülerin ve eski gönderim kayıtlarının temizlenmesi."""
 import shutil
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from gonderici import HATALI, KUYRUK
+from veritabani import KAYIT_SAKLAMA_GUN, baglan
+from zaman import db_zamani
 
 
 def _korunan_dosyalar() -> set[Path]:
-    """Henüz merkeze ulaşmamış kayıtların görüntü dosyaları."""
-    korunan = set()
-    for klasor in (KUYRUK, HATALI):
-        if not klasor.exists():
-            continue
-        for json_dosya in klasor.glob("*.json"):
-            try:
-                kayit = json.loads(json_dosya.read_text(encoding="utf-8"))
-                korunan.add(Path(kayit["dosya"]).resolve())
-            except (ValueError, KeyError, OSError):
-                continue
-    return korunan
+    """Henüz merkeze ulaşmamış ("bekliyor" ya da "hatali") kayıtların görüntü dosyaları."""
+    with baglan() as db:
+        satirlar = db.execute("SELECT dosya_yolu FROM kayitlar"
+                              " WHERE durum IN ('bekliyor', 'hatali')").fetchall()
+    return {Path(s["dosya_yolu"]).resolve() for s in satirlar}
 
 
 def temizle(saklama_gun: int, log, klasor: str = "goruntuler"):
     """saklama_gun'den eski tarih klasörlerindeki görüntüleri siler.
 
-    Kuyrukta veya hatalı klasöründe kaydı olan görüntülere dokunmaz.
+    Bekleyen veya hatalı kaydı olan görüntülere dokunmaz. Veritabanı okunamazsa
+    hangi dosyaların korunacağı bilinemeyeceği için hiçbir şey silmez.
     """
     kok = Path(klasor)
     if not kok.exists():
@@ -59,6 +53,18 @@ def temizle(saklama_gun: int, log, klasor: str = "goruntuler"):
                  f"{atlanan} görüntü gönderilmeyi beklediği için tutuldu")
 
 
+def eski_kayitlari_sil(kayit_saklama_gun: int, log) -> int:
+    """Gönderileli kayit_saklama_gun'den fazla olmuş kayıtları tablodan siler."""
+    # Zamanlar aynı okunur biçimde (YYYY-MM-DD SS:DD:ss) olduğu için metin karşılaştırması yeterli
+    sinir = db_zamani(datetime.now() - timedelta(days=int(kayit_saklama_gun)))
+    with baglan() as db:
+        silinen = db.execute("DELETE FROM kayitlar WHERE durum = 'gonderildi'"
+                             " AND gonderim_zamani < ?", (sinir,)).rowcount
+    if silinen:
+        log.info(f"Temizlik: {silinen} eski gönderim kaydı veritabanından silindi")
+    return silinen
+
+
 def temizlik_dongusu(ayarlar: dict, log, dur):
     """Açılışta ve sonra her saat temizlik yapar."""
     while not dur.is_set():
@@ -66,4 +72,8 @@ def temizlik_dongusu(ayarlar: dict, log, dur):
             temizle(ayarlar.get("saklama_gun", 7), log)
         except Exception:
             log.exception("Temizlik sırasında hata")
+        try:
+            eski_kayitlari_sil(ayarlar.get("kayit_saklama_gun", KAYIT_SAKLAMA_GUN), log)
+        except Exception:
+            log.exception("Eski kayıtlar silinirken hata")
         dur.wait(3600)

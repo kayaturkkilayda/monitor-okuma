@@ -1,11 +1,45 @@
 """Her kamera için ayrı iş parçacığında periyodik çekim."""
 import threading
 import time
-import uuid
 from datetime import datetime
 
 from gonderici import kuyruga_ekle
-from kaydedici import kaydet
+from kaydedici import goruntu_yolu, kaydet
+from kimlik import yeni_cift_kimligi, yeni_kayit_kimligi
+
+
+def cifti_kaydet(kamera, ayarlar: dict, log, kare1, z1, kare2, z2) -> int:
+    """Çekilen kareleri kimlikleriyle kaydedip kuyruğa ekler; eklenen kare sayısını döndürür.
+
+    Kimlik görüntü kaydedilmeden önce belirlenir, çünkü dosyanın adı kimliğin kendisidir.
+    """
+    tesis = ayarlar["tesis_kodu"]
+    etiket = f"{tesis}/{kamera.kod}/{kamera.yatak}"
+    kareler = [(1, kare1, z1), (2, kare2, z2)]
+    if all(kare is None for _, kare, _ in kareler):
+        return 0
+
+    # Çiftin kimliği ilk karenin zamanıyla (ilk kare alınamadıysa bile çekim anı bellidir)
+    cift_zamani = datetime.fromtimestamp(z1 if z1 is not None else z2)
+    cift_id = yeni_cift_kimligi(tesis, kamera.kod, kamera.yatak, cift_zamani)
+
+    eklenen = 0
+    for sira, kare, z in kareler:
+        if kare is None:
+            log.debug(f"{etiket} | {sira}. kare alınamadı")
+            continue
+        zaman = datetime.fromtimestamp(z)
+
+        def yol(ad, zaman=zaman):
+            return goruntu_yolu(ad, kamera.yatak, zaman, format=ayarlar["format"])
+
+        kayit_id = yeni_kayit_kimligi(tesis, kamera.kod, kamera.yatak, zaman, sira, yol)
+        boyut = kaydet(kare, yol(kayit_id), kalite=ayarlar["kalite"])
+        kuyruga_ekle(yol(kayit_id), tesis, kamera.kod, kamera.yatak,
+                     zaman, sira, cift_id, kayit_id)
+        eklenen += 1
+        log.info(f"{etiket} | {sira}. kare kuyruğa eklendi ({boyut / 1024:.1f} KB)")
+    return eklenen
 
 
 def kamera_dongusu(kamera, ayarlar: dict, log, durum, dur: threading.Event):
@@ -17,23 +51,12 @@ def kamera_dongusu(kamera, ayarlar: dict, log, durum, dur: threading.Event):
         baslangic = time.time()
         basarili_kare = 0
         try:
-            kare1, z1, kare2, z2 = kamera.cift_cekim(aralik_sn=gecikme)
-            cift_id = str(uuid.uuid4())
-            for sira, (kare, z) in enumerate([(kare1, z1), (kare2, z2)], start=1):
-                if kare is None:
-                    log.debug(f"{etiket} | {sira}. kare alınamadı")
-                    continue
-                zaman = datetime.fromtimestamp(z)
-                yol, boyut = kaydet(kare, kamera.kod, kamera.yatak, zaman,
-                                    format=ayarlar["format"], kalite=ayarlar["kalite"])
-                kuyruga_ekle(yol, ayarlar["tesis_kodu"], kamera.kod, kamera.yatak,
-                             zaman, sira, cift_id)
-                basarili_kare += 1
-                log.info(f"{etiket} | {sira}. kare kuyruğa eklendi ({boyut / 1024:.1f} KB)")
+            kareler = kamera.cift_cekim(aralik_sn=gecikme)
+            basarili_kare = cifti_kaydet(kamera, ayarlar, log, *kareler)
         except Exception:
             log.exception(f"{etiket} | beklenmeyen hata")
 
-        durum.bildir(etiket, basarili=basarili_kare > 0)
+        durum.bildir(etiket, basarili=basarili_kare > 0, kaynak=kamera.kod)
 
         gecen = time.time() - baslangic
         dur.wait(max(0, aralik - gecen))

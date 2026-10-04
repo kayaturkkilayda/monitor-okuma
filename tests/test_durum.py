@@ -59,3 +59,26 @@ def test_kameralar_birbirini_etkilemez(tmp_path, monkeypatch):
         d.bildir("H01/K2/Y2", basarili=True)
     assert len(log.mesajlar) == 1
     assert "K1" in log.mesajlar[0]
+
+def _olaylar():
+    from veritabani import baglan
+    with baglan() as db:
+        return [dict(s) for s in db.execute("SELECT seviye, kaynak, mesaj FROM olaylar ORDER BY id")]
+
+
+def test_ariza_ve_duzelme_olaylara_yazilir(tmp_path, monkeypatch):
+    d, log = _kur(tmp_path, monkeypatch)
+    for _ in range(ARIZA_ESIGI):
+        d.bildir("H01/K1/Y1", basarili=False, kaynak="K1")
+    d.bildir("H01/K1/Y1", basarili=True, kaynak="K1")
+    olaylar = _olaylar()
+    assert [(o["seviye"], o["kaynak"]) for o in olaylar] == [("ERROR", "K1"), ("INFO", "K1")]
+    assert "ARIZA" in olaylar[0]["mesaj"] and "DÜZELDİ" in olaylar[1]["mesaj"]
+    assert [o["mesaj"] for o in olaylar] == log.mesajlar     # log dosyasına da aynısı
+
+
+def test_normal_turlar_olaylara_yazilmaz(tmp_path, monkeypatch):
+    d, _ = _kur(tmp_path, monkeypatch)
+    d.bildir("H01/K1/Y1", basarili=True, kaynak="K1")
+    d.bildir("H01/K1/Y1", basarili=False, kaynak="K1")
+    assert _olaylar() == []

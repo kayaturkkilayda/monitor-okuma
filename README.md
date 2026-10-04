@@ -29,7 +29,7 @@ Bu proje, hasta monitörlerinden kamera aracılığıyla alınan görüntülerin
 - Görüntülerin yerel olarak kaydedilmesi ve kuyruklanması hazırlandı.
 - M4 API gönderim altyapısı hazırlandı.
 - Geçici ağ/API hatalarında tekrar deneme mekanizması hazırlandı.
-- Kalıcı hatalar için ayrı hata klasörü kullanılıyor.
+- Gönderim kuyruğu, gönderim geçmişi ve olaylar SQLite veritabanında tutuluyor; kalıcı hatalı kayıtlar `hatali` durumuyla işaretleniyor.
 - Ayarlar arayüz üzerinden yönetiliyor.
 - Kamera ve M4 bilgileri kod içine gömülmeden ayar dosyası üzerinden yönetiliyor.
 - Şifrelerin düz metin olarak tutulmaması için Windows DPAPI kullanılıyor.
@@ -68,6 +68,8 @@ Paketleme `--onefile` yerine `--onedir` ile yapılınca sorun aşıldı. `--onef
 
 Hastane ortamında imzasız EXE'ler yine engellenebileceği için kod imzalama sertifikası açık konu olarak kalmaktadır.
 
+> **Not (2 Ekim 2026):** Geliştirme bilgisayarında Smart App Control açıkken her yeniden paketleme EXE'nin parmak izini değiştirir ve Windows yeni dosyayı tanımadığı için engelleyebilir. Aynı anda paketlenen `arayuz.exe` çalışırken `motor.exe` "Uygulama Denetimi ilkesi bu dosyayı engelledi" hatasıyla engellendi; karar dosya bazında verildiği için önceden bilinemez. Kalıcı çözüm EXE'leri güvenilir bir kod imzalama sertifikasıyla imzalamaktır. Smart App Control kapatılmamalıdır; Windows'ta bir kez kapatılınca sistem sıfırlanmadan yeniden açılamaz. İmza gelene kadar geliştirme sırasında motor `python main.py` ile çalıştırılır.
+
 ## 4. Kurulum klasörü
 
 Beklenen kurulum yapısı aşağıdaki gibidir:
@@ -88,13 +90,28 @@ Motor çalıştığında aşağıdaki çalışma klasörleri ve dosyalar oluşab
 
 ```text
 goruntuler/
-bekleyen/
-hatali/
+veri/
+  monitor.db
 loglar/
 durum.json
 ```
 
-`durum.json`, motorun kamera durumlarını yazdığı dosyadır; arayüz kamera durumlarını bu dosyadan okur.
+- `goruntuler/`: Çekilen görüntü dosyaları.
+- `veri/monitor.db`: SQLite veritabanı. `kayitlar` tablosu gönderim kuyruğunu ve geçmişini (durum: `bekliyor` / `gonderildi` / `hatali`), `olaylar` tablosu arıza, düzelme, gönderim uyarı/hataları ve motorun başlama/durma/ayar değişikliği olaylarını tutar. Motor ve arayüz aynı anda erişebilsin diye WAL modunda çalışır; motor çalışırken yanında `monitor.db-wal` ve `monitor.db-shm` dosyaları görülmesi normaldir, silinmemelidir.
+- `loglar/`: Günlük log dosyaları (olaylar ayrıca burada da yazılır).
+- `durum.json`: Motorun kamera durumlarını yazdığı dosya; arayüz kamera durumlarını buradan okur.
+
+Her görüntünün okunabilir bir kimliği vardır ve dosya adı bu kimliktir:
+
+- `kayit_id`: `<tesis>_<kamera>_<yatak>_<tarih>_<saat>_<sıra>`, örn. `H01_K1_Y1_2026-10-02_15-12-13_1`
+- `cift_id`: aynı çekimdeki iki kareyi bağlar, ilk karenin zamanıyla ve sırasız: `H01_K1_Y1_2026-10-02_15-12-13`
+- Aynı kimlik zaten varsa (örn. motor aynı saniyede yeniden başlarsa) sonuna `_2`, `_3` eklenir.
+
+Veritabanında zamanlar yerel saatle `2026-10-02 15:12:13` biçiminde, saat dilimi ayrı `saat_dilimi` sütununda (`+03:00`) tutulur. M4'e giden `zaman` alanı saat dilimli ISO biçimindedir (`2026-10-02T15:12:13+03:00`). Arayüz tarihleri `02.10.2026 15:12:13` biçiminde gösterir. Eski sürümün UUID'li kayıtları ve görüntü adları motor ilk açıldığında bu biçime çevrilir.
+
+Gönderilen kayıtlar `kayit_saklama_gun` ayarı kadar (varsayılan 90 gün) geçmişte tutulur, sonra temizlik tarafından silinir. Önceki sürümün `bekleyen/` ve `hatali/` klasörlerindeki JSON kayıtları, motor ilk açıldığında veritabanına aktarılır ve klasörler kaldırılır.
+
+> **Dikkat:** Veritabanı motor çalışırken bir SQLite programıyla incelenecekse **salt okunur** açılmalıdır. Düzenleme modunda açık bırakılan bir program veritabanını kilitler ve motor yeni kayıt ekleyemez.
 
 > **Önemli:** Şifreler Windows DPAPI ile o bilgisayara bağlı olarak şifrelenir. `ayarlar.json` başka bir bilgisayara kopyalanırsa şifreler çözülemez ve motor açılmaz. Yeni bilgisayarda `config/ayarlar.ornek.json` kopyalanıp adı `ayarlar.json` yapılmalı; API anahtarı ve kamera şifreleri o bilgisayardaki arayüzden girilmelidir.
 
@@ -151,6 +168,7 @@ Bu bölümde en az aşağıdaki yapılandırmalar bulunur:
 - Görüntü kalitesi
 - Gönderilen görüntülerin silinme ayarı
 - Sahipsiz dosya saklama süresi
+- Gönderim kaydı saklama süresi
 
 M4 API'nin gerçek endpoint ve kimlik doğrulama bilgileri geldiğinde bunlar arayüzden girilmelidir. Mevcut gönderim formatı farklıysa yalnızca `src/gonderici.py` içindeki `_gonder` fonksiyonunun uyarlanması gerekebilir.
 

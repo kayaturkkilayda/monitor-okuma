@@ -15,6 +15,7 @@ os.chdir(KOK)
 sys.path.insert(0, str(KOK / "src"))
 from ayarlar import ayarlari_oku, ayarlari_yaz, kameralari_olustur
 from ayar_sekmesi import AyarSekmesi
+from zaman import ekran_zamani
 
 DURUM_DOSYASI = Path("durum.json")
 YENILEME_MS = 5000
@@ -132,7 +133,7 @@ class Uygulama(tk.Tk):
     def _kamera_listesi_kur(self):
         kolonlar = {"kod": ("Kamera", 70), "yatak": ("Yatak", 100),
                     "tip": ("Tip", 70), "adres": ("Adres", 330),
-                    "durum": ("Durum", 100), "son": ("Son görüntü", 120)}
+                    "durum": ("Durum", 100), "son": ("Son görüntü", 140)}
         self.liste = ttk.Treeview(self.kamera_sekmesi, columns=list(kolonlar),
                                   show="headings", height=15)
         for ad, (baslik, genislik) in kolonlar.items():
@@ -154,7 +155,7 @@ class Uygulama(tk.Tk):
         for k in self.ayarlar["kameralar"]:
             d = durumlar.get(f"{tesis}/{k['kod']}/{k['yatak']}", {})
             durum = d.get("durum", "bilinmiyor") if k.get("aktif", True) else "pasif"
-            son = (d.get("son_basari") or "")[11:19]
+            son = ekran_zamani(d.get("son_basari"))
             self.liste.insert("", "end", iid=k["kod"], tags=(durum,), values=(
                 k["kod"], k["yatak"], k["tip"], k["adres"],
                 DURUM_YAZISI.get(durum, durum), son))

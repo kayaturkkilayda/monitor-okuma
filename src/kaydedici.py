@@ -7,17 +7,18 @@ from PIL import Image
 import pillow_avif  # noqa: F401  AVIF desteğini Pillow'a ekler
 
 
-def kaydet(kare, kamera_kod: str, yatak_kod: str, zaman: datetime,
-           klasor: str = "goruntuler", format: str = "avif",
-           kalite: int = 85) -> tuple[Path, int]:
-    """Kareyi kaydeder. (dosya yolu, boyut byte) döndürür."""
-    hedef = Path(klasor) / zaman.strftime("%Y-%m-%d") / yatak_kod
-    hedef.mkdir(parents=True, exist_ok=True)
+def goruntu_yolu(ad: str, yatak_kod: str, zaman: datetime,
+                 klasor: str = "goruntuler", format: str = "avif") -> Path:
+    """goruntuler/<tarih>/<yatak>/<ad>.<format>  (ad = kayit_id)"""
+    return Path(klasor) / zaman.strftime("%Y-%m-%d") / yatak_kod / f"{ad}.{format}"
 
-    dosya = hedef / f"{kamera_kod}_{zaman.strftime('%H-%M-%S')}.{format}"
+
+def kaydet(kare, dosya: Path, kalite: int = 85) -> int:
+    """Kareyi verilen yola kaydeder, boyutu (byte) döndürür."""
+    dosya.parent.mkdir(parents=True, exist_ok=True)
 
     # OpenCV BGR tutar, Pillow RGB bekler
     goruntu = Image.fromarray(cv2.cvtColor(kare, cv2.COLOR_BGR2RGB))
     goruntu.save(dosya, quality=kalite)
 
-    return dosya, dosya.stat().st_size
+    return dosya.stat().st_size

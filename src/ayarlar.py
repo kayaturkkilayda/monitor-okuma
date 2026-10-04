@@ -38,6 +38,14 @@ def ayarlari_yaz(ayarlar: dict, yol: Path = AYAR_DOSYASI):
     gecici.replace(yol)
 
 
+def degisen_alanlar(eski: dict, yeni: dict) -> list[str]:
+    """Değeri değişen ayarların yalnızca adlarını döndürür.
+
+    Değerler döndürülmez; böylece şifre ve API anahtarı loglara karışmaz.
+    """
+    return sorted(ad for ad in eski.keys() | yeni.keys() if eski.get(ad) != yeni.get(ad))
+
+
 def kameralari_olustur(ayarlar: dict) -> list:
     """Aktif kameraları tipine göre oluşturur.
 
