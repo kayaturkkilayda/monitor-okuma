@@ -12,13 +12,18 @@ ARIZA_ESIGI = 3   # üst üste kaç başarısız turdan sonra arıza sayılsın
 YANIT_YOK_KATI = 3  # son görüntü çekim aralığının kaç katından eskiyse "yanıt yok"
 
 
-def gorunen_durum(d: dict, aktif: bool, aralik_sn: float, simdi: datetime) -> str:
+def gorunen_durum(d: dict, aktif: bool, aralik_sn: float, simdi: datetime,
+                  onayli: bool = True) -> str:
     """Arayüzde gösterilecek durum.
+
+    Onaysız kamera her durumdan önce "onay_bekliyor" görünür; motor ondan çekim yapmaz.
 
     durum.json'u motor yazar; motor kapalıysa son yazılan "çalışıyor" orada öylece kalır.
     Son görüntü çok eskiyse "çalışıyor" yerine "yanit_yok" gösterilir. Arızalı kamera
     zaten görüntü veremediği için arızalı olarak kalır.
     """
+    if not onayli:
+        return "onay_bekliyor"
     if not aktif:
         return "pasif"
     durum = d.get("durum", "bilinmiyor")

@@ -19,6 +19,7 @@ from ayar_sekmesi import AyarSekmesi
 from durum import gorunen_durum
 from kayitlar_sekmesi import KayitlarSekmesi
 from loglar_sekmesi import LoglarSekmesi
+from onay import gorunen_adres, onay_iste, onayi_aktar, onayli_mi
 from onizleme import onizleme_ac
 from zaman import ekran_zamani
 
@@ -26,7 +27,7 @@ DURUM_DOSYASI = Path("durum.json")
 YENILEME_MS = 5000
 
 DURUM_YAZISI = {"calisiyor": "Çalışıyor", "arizali": "Arızalı", "yanit_yok": "Yanıt yok",
-                "pasif": "Pasif", "bilinmiyor": "Bilinmiyor"}
+                "onay_bekliyor": "Onay bekliyor", "pasif": "Pasif", "bilinmiyor": "Bilinmiyor"}
 
 
 def durumlari_oku() -> dict:
@@ -154,6 +155,7 @@ class Uygulama(tk.Tk):
         self.liste.tag_configure("calisiyor", background="#d4edda")
         self.liste.tag_configure("arizali", background="#f8d7da")
         self.liste.tag_configure("yanit_yok", background="#fff3cd")
+        self.liste.tag_configure("onay_bekliyor", background="#ffd8a8")    # turuncu
         self.liste.tag_configure("pasif", foreground="#999999")
         self.liste.pack(fill="both", expand=True)
         self.liste.bind("<Double-1>", lambda e: self._duzenle())
@@ -168,10 +170,10 @@ class Uygulama(tk.Tk):
         self.liste.delete(*self.liste.get_children())
         for k in self.ayarlar["kameralar"]:
             d = durumlar.get(f"{tesis}/{k['kod']}/{k['yatak']}", {})
-            durum = gorunen_durum(d, k.get("aktif", True), aralik, simdi)
+            durum = gorunen_durum(d, k.get("aktif", True), aralik, simdi, onayli=onayli_mi(k))
             son = ekran_zamani(d.get("son_basari"))
             self.liste.insert("", "end", iid=k["kod"], tags=(durum,), values=(
-                k["kod"], k["yatak"], k["tip"], k["adres"],
+                k["kod"], k["yatak"], k["tip"], gorunen_adres(k["adres"]),
                 DURUM_YAZISI.get(durum, durum), son))
 
         self.liste.selection_set([s for s in secili if self.liste.exists(s)])
@@ -191,6 +193,7 @@ class Uygulama(tk.Tk):
         self.test_dugmesi = ttk.Button(cerceve, text="Bağlantıyı test et",
                                        command=self._baglanti_test)
         self.test_dugmesi.pack(side="left", padx=5)
+        ttk.Button(cerceve, text="Onayla", command=self._onayla).pack(side="left", padx=5)
 
     def _diger_kameralar(self, haric: str | None = None) -> dict:
         return {k["kod"]: k["yatak"] for k in self.ayarlar["kameralar"] if k["kod"] != haric}
@@ -202,12 +205,38 @@ class Uygulama(tk.Tk):
             return None
         return next(i for i, k in enumerate(self.ayarlar["kameralar"]) if k["kod"] == secili[0])
 
+    # ---------- Onay ----------
+
+    def _sor(self, baslik: str, mesaj: str) -> bool:
+        return messagebox.askyesno(baslik, mesaj, icon="warning", parent=self)
+
+    def _ek_mesaj(self, k: dict) -> str:
+        return "" if onayli_mi(k) else " (onay verilmedi; onaylanana kadar görüntü alınmayacak)"
+
+    def _onayla(self):
+        sira = self._secili_kamera()
+        if sira is None:
+            return
+        k = self.ayarlar["kameralar"][sira]
+        if onayli_mi(k):
+            messagebox.showinfo("Zaten onaylı", f"{k['kod']} kamerası {ekran_zamani(k['onay_zamani'])} "
+                                                f"tarihinde {k['onaylayan']} tarafından onaylandı.")
+            return
+        onayli = onay_iste(k, self._sor)
+        if onayli:
+            self.ayarlar["kameralar"][sira] = onayli
+            self._kaydet_ve_bildir(f"{k['kod']} onaylandı")
+
+    # ---------- Ekle / düzenle / sil ----------
+
     def _ekle(self):
         form = KameraFormu(self, self._diger_kameralar())
         self.wait_window(form)
         if form.sonuc:
-            self.ayarlar["kameralar"].append(form.sonuc)
-            self._kaydet_ve_bildir(f"{form.sonuc['kod']} eklendi")
+            # Eklenen kameradan görüntü alınmadan önce kullanım onayı istenir
+            k = onay_iste(form.sonuc, self._sor) or form.sonuc
+            self.ayarlar["kameralar"].append(k)
+            self._kaydet_ve_bildir(f"{k['kod']} eklendi{self._ek_mesaj(k)}")
 
     def _duzenle(self):
         sira = self._secili_kamera()
@@ -217,8 +246,12 @@ class Uygulama(tk.Tk):
         form = KameraFormu(self, self._diger_kameralar(haric=eski["kod"]), eski)
         self.wait_window(form)
         if form.sonuc:
-            self.ayarlar["kameralar"][sira] = form.sonuc
-            self._kaydet_ve_bildir(f"{form.sonuc['kod']} güncellendi")
+            k = onayi_aktar(eski, form.sonuc)
+            if onayli_mi(eski) and not onayli_mi(k):
+                # Adres değişti: başka bir cihaz olabilir, onay yeniden istenir
+                k = onay_iste(k, self._sor) or k
+            self.ayarlar["kameralar"][sira] = k
+            self._kaydet_ve_bildir(f"{k['kod']} güncellendi{self._ek_mesaj(k)}")
 
     def _sil(self):
         sira = self._secili_kamera()
@@ -243,6 +276,14 @@ class Uygulama(tk.Tk):
         if sira is None:
             return
         k = self.ayarlar["kameralar"][sira]
+        if not onayli_mi(k):
+            # Onaysız kameradan test görüntüsü bile alınmadan önce onay istenir
+            onayli = onay_iste(k, self._sor)
+            if onayli is None:
+                return
+            k = self.ayarlar["kameralar"][sira] = onayli
+            ayarlari_yaz(self.ayarlar)
+            self._listeyi_doldur()
         # Pasif kamerayı da test edebilmek için geçici olarak aktif sayıyoruz
         kamera = kameralari_olustur({"kameralar": [{**k, "aktif": True}]})[0]
         self.test_dugmesi.config(state="disabled", text="Test ediliyor...")

@@ -122,3 +122,10 @@ def test_arizali_ve_bilinmiyor_aynen_kalir():
 
 def test_pasif_kamera_pasif():
     assert gorunen_durum({"durum": "calisiyor", "son_basari": _once(1)}, False, 30, SIMDI) == "pasif"
+
+
+def test_onaysiz_kamera_onay_bekliyor_her_durumdan_once():
+    taze = {"durum": "calisiyor", "son_basari": _once(1)}
+    assert gorunen_durum(taze, True, 30, SIMDI, onayli=False) == "onay_bekliyor"
+    assert gorunen_durum({}, False, 30, SIMDI, onayli=False) == "onay_bekliyor"
+    assert gorunen_durum(taze, True, 30, SIMDI, onayli=True) == "calisiyor"

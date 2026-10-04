@@ -14,19 +14,22 @@ from durum import KameraDurumu
 from gecis import eski_kuyrugu_aktar, veritabanini_guncelle
 from gonderici import gonderici_dongusu
 from log import log_kur
+from onay import onayli_kameralar
 from temizlik import temizlik_dongusu
 from veritabani import olay
 from zamanlayici import baslat
 
 KONTROL_SN = 5
+ONAYSIZ_BILDIRILEN = set()   # onaysız kameralar motor açık kaldıkça yalnızca bir kez bildirilir
 
 log = log_kur()
 durum = KameraDurumu(log)
 
 
 def calistir(ayarlar: dict):
-    """Kameraları, göndericiyi ve temizliği başlatır."""
-    kameralar = kameralari_olustur(ayarlar)
+    """Kameraları, göndericiyi ve temizliği başlatır. Onaysız kameradan çekim yapılmaz."""
+    onaylilar = onayli_kameralar(ayarlar["kameralar"], log, ONAYSIZ_BILDIRILEN)
+    kameralar = kameralari_olustur({**ayarlar, "kameralar": onaylilar})
     olay(log, "INFO", "sistem", f"{ayarlar['tesis_kodu']} | {len(kameralar)} kamera başlatılıyor")
     dur, is_parcaciklari = baslat(kameralar, ayarlar, log, durum)
 
