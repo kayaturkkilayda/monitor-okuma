@@ -1,5 +1,3 @@
-import tkinter as tk
-
 import pytest
 
 from ayar_sekmesi import AyarSekmesi
@@ -9,15 +7,9 @@ TEMEL = {"tesis_kodu": "H01", "api_url": "", "api_key": "", "gonderim_araligi_sn
          "gonderilince_sil": True, "kameralar": []}
 
 
-@pytest.fixture(scope="module")
-def kok():
-    try:
-        pencere = tk.Tk()
-    except tk.TclError:
-        pytest.skip("Ekran yok, Tk açılamıyor")
-    pencere.withdraw()
-    yield pencere
-    pencere.destroy()
+@pytest.fixture
+def kok(tk_kok):
+    return tk_kok
 
 
 def test_eski_ayar_dosyasinda_kayit_saklama_varsayilan_90_gorunur(kok):

@@ -82,3 +82,43 @@ def test_normal_turlar_olaylara_yazilmaz(tmp_path, monkeypatch):
     d.bildir("H01/K1/Y1", basarili=True, kaynak="K1")
     d.bildir("H01/K1/Y1", basarili=False, kaynak="K1")
     assert _olaylar() == []
+
+
+# ---------- Arayüzde görünen durum ----------
+
+from datetime import datetime, timedelta
+
+from durum import gorunen_durum
+
+SIMDI = datetime(2026, 10, 4, 12, 0, 0)
+
+
+def _once(saniye):
+    return (SIMDI - timedelta(seconds=saniye)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def test_taze_goruntu_calisiyor():
+    assert gorunen_durum({"durum": "calisiyor", "son_basari": _once(60)}, True, 30, SIMDI) == "calisiyor"
+
+
+def test_aralik_3_katindan_eski_goruntu_yanit_yok():
+    """Motor kapanınca durum.json'da 'çalışıyor' kalır; yeşil görünmemeli."""
+    assert gorunen_durum({"durum": "calisiyor", "son_basari": _once(91)}, True, 30, SIMDI) == "yanit_yok"
+
+
+def test_tam_sinirda_hala_calisiyor():
+    assert gorunen_durum({"durum": "calisiyor", "son_basari": _once(90)}, True, 30, SIMDI) == "calisiyor"
+
+
+def test_eski_iso_bicimli_son_basari_da_okunur():
+    iso = (SIMDI - timedelta(seconds=500)).astimezone().isoformat(timespec="seconds")
+    assert gorunen_durum({"durum": "calisiyor", "son_basari": iso}, True, 30, SIMDI) == "yanit_yok"
+
+
+def test_arizali_ve_bilinmiyor_aynen_kalir():
+    assert gorunen_durum({"durum": "arizali", "son_basari": _once(9999)}, True, 30, SIMDI) == "arizali"
+    assert gorunen_durum({}, True, 30, SIMDI) == "bilinmiyor"
+
+
+def test_pasif_kamera_pasif():
+    assert gorunen_durum({"durum": "calisiyor", "son_basari": _once(1)}, False, 30, SIMDI) == "pasif"

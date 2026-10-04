@@ -4,23 +4,28 @@ import os
 import sys
 import threading
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox, ttk
 
 import cv2
-from PIL import Image, ImageTk
+from PIL import Image
 
 KOK = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 os.chdir(KOK)
 sys.path.insert(0, str(KOK / "src"))
 from ayarlar import ayarlari_oku, ayarlari_yaz, kameralari_olustur
 from ayar_sekmesi import AyarSekmesi
+from durum import gorunen_durum
+from kayitlar_sekmesi import KayitlarSekmesi
+from loglar_sekmesi import LoglarSekmesi
+from onizleme import onizleme_ac
 from zaman import ekran_zamani
 
 DURUM_DOSYASI = Path("durum.json")
 YENILEME_MS = 5000
 
-DURUM_YAZISI = {"calisiyor": "Çalışıyor", "arizali": "Arızalı",
+DURUM_YAZISI = {"calisiyor": "Çalışıyor", "arizali": "Arızalı", "yanit_yok": "Yanıt yok",
                 "pasif": "Pasif", "bilinmiyor": "Bilinmiyor"}
 
 
@@ -112,7 +117,7 @@ class Uygulama(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Monitör Görüntü Aktarımı")
-        self.geometry("950x500")
+        self.geometry("1100x560")
         self.ayarlar = ayarlari_oku()
 
         sekmeler = ttk.Notebook(self)
@@ -122,6 +127,12 @@ class Uygulama(tk.Tk):
         sekmeler.add(self.kamera_sekmesi, text="Kameralar")
         self._kamera_listesi_kur()
         self._dugmeleri_kur()
+
+        self.kayitlar_sekmesi = KayitlarSekmesi(sekmeler)
+        sekmeler.add(self.kayitlar_sekmesi, text="Kayıtlar")
+
+        self.loglar_sekmesi = LoglarSekmesi(sekmeler)
+        sekmeler.add(self.loglar_sekmesi, text="Loglar")
 
         self.ayar_sekmesi = AyarSekmesi(sekmeler, self.ayarlar)
         sekmeler.add(self.ayar_sekmesi, text="Ayarlar")
@@ -142,6 +153,7 @@ class Uygulama(tk.Tk):
 
         self.liste.tag_configure("calisiyor", background="#d4edda")
         self.liste.tag_configure("arizali", background="#f8d7da")
+        self.liste.tag_configure("yanit_yok", background="#fff3cd")
         self.liste.tag_configure("pasif", foreground="#999999")
         self.liste.pack(fill="both", expand=True)
         self.liste.bind("<Double-1>", lambda e: self._duzenle())
@@ -149,12 +161,14 @@ class Uygulama(tk.Tk):
     def _listeyi_doldur(self):
         durumlar = durumlari_oku()
         tesis = self.ayarlar["tesis_kodu"]
+        aralik = self.ayarlar["gonderim_araligi_sn"]
+        simdi = datetime.now()
         secili = self.liste.selection()
 
         self.liste.delete(*self.liste.get_children())
         for k in self.ayarlar["kameralar"]:
             d = durumlar.get(f"{tesis}/{k['kod']}/{k['yatak']}", {})
-            durum = d.get("durum", "bilinmiyor") if k.get("aktif", True) else "pasif"
+            durum = gorunen_durum(d, k.get("aktif", True), aralik, simdi)
             son = ekran_zamani(d.get("son_basari"))
             self.liste.insert("", "end", iid=k["kod"], tags=(durum,), values=(
                 k["kod"], k["yatak"], k["tip"], k["adres"],
@@ -253,14 +267,8 @@ class Uygulama(tk.Tk):
                 f"{hata or 'Adres, kullanıcı adı ve şifreyi kontrol edin.'}")
             return
 
-        pencere = tk.Toplevel(self)
-        pencere.title(f"{k['kod']} → {k['yatak']}  |  {kare.shape[1]}x{kare.shape[0]}")
         goruntu = Image.fromarray(cv2.cvtColor(kare, cv2.COLOR_BGR2RGB))
-        goruntu.thumbnail((800, 600))
-        foto = ImageTk.PhotoImage(goruntu)
-        etiket = ttk.Label(pencere, image=foto)
-        etiket.image = foto      # referansı tut; yoksa Python resmi siler ve pencere boş kalır
-        etiket.pack(padx=10, pady=10)
+        onizleme_ac(self, goruntu, f"{k['kod']} → {k['yatak']}")
 
 
 if __name__ == "__main__":

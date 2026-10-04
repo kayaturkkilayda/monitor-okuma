@@ -75,6 +75,7 @@ def _kayitlari_cevir(db, tasinanlar: list) -> int:
     db.execute("ALTER TABLE kayitlar RENAME TO kayitlar_eski")
     db.execute("DROP INDEX IF EXISTS ix_kayitlar_durum")
     db.execute("DROP INDEX IF EXISTS ix_kayitlar_cift")
+    db.execute("DROP INDEX IF EXISTS ix_kayitlar_cekim")
     tablolari_olustur(db)
 
     satirlar = [dict(s) | {"cekim": s["cekim_zamani"]} for s in db.execute(

@@ -1,13 +1,31 @@
 """Kamera sağlık takibi: arıza ve düzelme anlarını yakalar."""
 import json
 import threading
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from veritabani import olay
-from zaman import simdi as simdiki_zaman
+from zaman import simdi as simdiki_zaman, zamani_coz
 
 DURUM_DOSYASI = Path("durum.json")
 ARIZA_ESIGI = 3   # üst üste kaç başarısız turdan sonra arıza sayılsın
+YANIT_YOK_KATI = 3  # son görüntü çekim aralığının kaç katından eskiyse "yanıt yok"
+
+
+def gorunen_durum(d: dict, aktif: bool, aralik_sn: float, simdi: datetime) -> str:
+    """Arayüzde gösterilecek durum.
+
+    durum.json'u motor yazar; motor kapalıysa son yazılan "çalışıyor" orada öylece kalır.
+    Son görüntü çok eskiyse "çalışıyor" yerine "yanit_yok" gösterilir. Arızalı kamera
+    zaten görüntü veremediği için arızalı olarak kalır.
+    """
+    if not aktif:
+        return "pasif"
+    durum = d.get("durum", "bilinmiyor")
+    son = zamani_coz(d.get("son_basari"))
+    if durum == "calisiyor" and (son is None or simdi - son > timedelta(seconds=aralik_sn * YANIT_YOK_KATI)):
+        return "yanit_yok"
+    return durum
 
 
 class KameraDurumu:

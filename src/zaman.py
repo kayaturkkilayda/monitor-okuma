@@ -36,6 +36,31 @@ def iso_zaman(db_metni: str, dilim: str) -> str:
     return db_metni.replace(" ", "T") + dilim
 
 
+def zamani_coz(metin: str | None) -> datetime | None:
+    """Veritabanı ya da ISO biçimindeki zamanı bu bilgisayarın yerel saatine çevirir.
+
+    Okunamazsa None döner.
+    """
+    if not metin:
+        return None
+    try:
+        zaman = datetime.fromisoformat(metin)
+    except ValueError:
+        return None
+    return zaman.astimezone().replace(tzinfo=None) if zaman.tzinfo else zaman
+
+
+def ekran_tarihini_coz(metin: str) -> str | None:
+    """Kullanıcının yazdığı GG.AA.YYYY tarihini veritabanı biçimine çevirir: 2026-10-02.
+
+    Boşsa ya da geçersizse None döner.
+    """
+    try:
+        return datetime.strptime(metin.strip(), "%d.%m.%Y").strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
 def ekran_zamani(metin: str | None) -> str:
     """Veritabanı ya da ISO biçimindeki zamanı ekranda GG.AA.YYYY SS:DD:ss olarak gösterir.
 

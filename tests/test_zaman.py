@@ -49,3 +49,18 @@ def test_ekran_zamani_bos_ve_bozuk_deger():
     assert z.ekran_zamani(None) == ""
     assert z.ekran_zamani("") == ""
     assert z.ekran_zamani("bilinmiyor") == "bilinmiyor"
+
+
+def test_zamani_coz_iki_bicimi_de_okur():
+    assert z.zamani_coz("2026-10-02 15:12:13") == datetime(2026, 10, 2, 15, 12, 13)
+    an = datetime(2026, 10, 2, 12, 0, 0, tzinfo=timezone.utc)
+    assert z.zamani_coz(an.isoformat()) == an.astimezone().replace(tzinfo=None)   # yerel saate çevrilir
+    assert z.zamani_coz(None) is None and z.zamani_coz("bozuk") is None
+
+
+def test_ekran_tarihini_coz():
+    assert z.ekran_tarihini_coz("02.10.2026") == "2026-10-02"
+    assert z.ekran_tarihini_coz(" 2.10.2026 ") == "2026-10-02"
+    assert z.ekran_tarihini_coz("2026-10-02") is None
+    assert z.ekran_tarihini_coz("31.02.2026") is None
+    assert z.ekran_tarihini_coz("") is None

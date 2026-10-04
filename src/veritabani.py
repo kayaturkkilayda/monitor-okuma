@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS kayitlar (
 );
 CREATE INDEX IF NOT EXISTS ix_kayitlar_durum ON kayitlar (durum, sonraki_deneme);
 CREATE INDEX IF NOT EXISTS ix_kayitlar_cift ON kayitlar (cift_id);
+CREATE INDEX IF NOT EXISTS ix_kayitlar_cekim ON kayitlar (cekim_zamani);
 
 CREATE TABLE IF NOT EXISTS olaylar (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
