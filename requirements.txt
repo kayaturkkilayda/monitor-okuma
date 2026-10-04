@@ -1,0 +1,7 @@
+# Uygulamanın (motor ve arayüz) çalışması için gereken paketler
+numpy==2.5.3
+opencv-python==5.0.0.93
+pillow==12.3.0
+pillow-avif-plugin==1.6.0
+pywin32==312
+requests==2.34.2

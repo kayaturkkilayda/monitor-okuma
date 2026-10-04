@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from ayarlar import ayarlari_yaz
+from eposta_bolumu import EpostaBolumu
 from veritabani import KAYIT_SAKLAMA_GUN
 
 # (ayar adı, ekranda görünen ad, alan türü)
@@ -57,6 +58,9 @@ class AyarSekmesi(ttk.Frame):
         ttk.Button(self, text="Kaydet", command=self._kaydet).grid(
             row=len(SATIRLAR) + 1, column=1, sticky="w", pady=(15, 0))
 
+        self.eposta = EpostaBolumu(self, ayarlar.get("smtp"))
+        self.eposta.grid(row=0, column=2, rowspan=len(SATIRLAR) + 2, sticky="nw", padx=(25, 0))
+
     def _dogrula(self):
         """(yeni ayarlar, None) ya da (None, hata mesajı) döndürür."""
         d = {ad: v.get().strip() for ad, v in self.degerler.items()}
@@ -79,7 +83,11 @@ class AyarSekmesi(ttk.Frame):
         if sayilar["gonderim_araligi_sn"] < sayilar["ikinci_cekim_gecikme_sn"] + 5:
             return None, "Çekim aralığı, ikinci çekim gecikmesinden en az 5 sn uzun olmalı."
 
-        return {**d, **sayilar, "gonderilince_sil": self.sil.get()}, None
+        smtp, hata = self.eposta.dogrula()
+        if hata:
+            return None, hata
+
+        return {**d, **sayilar, "gonderilince_sil": self.sil.get(), "smtp": smtp}, None
 
     def _kaydet(self):
         yeni, hata = self._dogrula()

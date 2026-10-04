@@ -10,6 +10,7 @@ os.chdir(KOK)
 sys.path.insert(0, str(KOK / "src"))
 
 from ayarlar import AYAR_DOSYASI, ayarlari_oku, degisen_alanlar, kameralari_olustur
+from bildirim import Bildirici
 from durum import KameraDurumu
 from gecis import eski_kuyrugu_aktar, veritabanini_guncelle
 from gonderici import gonderici_dongusu
@@ -23,7 +24,6 @@ KONTROL_SN = 5
 ONAYSIZ_BILDIRILEN = set()   # onaysız kameralar motor açık kaldıkça yalnızca bir kez bildirilir
 
 log = log_kur()
-durum = KameraDurumu(log)
 
 
 def calistir(ayarlar: dict):
@@ -71,6 +71,8 @@ except Exception:
     raise
 eski_kuyrugu_aktar(log)
 ayarlar = ayarlari_oku()
+bildirici = Bildirici(ayarlar, log)
+durum = KameraDurumu(log, bildirici)
 son_degisim = degisim_zamani()
 dur, is_parcaciklari = calistir(ayarlar)
 
@@ -95,9 +97,11 @@ try:
         olay(log, "INFO", "sistem", f"Ayarlar değişti (değişen: {degisen}), yeniden başlatılıyor...")
         durdur(dur, is_parcaciklari)
         ayarlar = yeni
+        bildirici.ayarlari_guncelle(ayarlar)
         dur, is_parcaciklari = calistir(ayarlar)
 
 except KeyboardInterrupt:
     olay(log, "INFO", "sistem", "Motor durduruluyor...")
     durdur(dur, is_parcaciklari)
+    bildirici.durdur()
     olay(log, "INFO", "sistem", "Motor durduruldu")

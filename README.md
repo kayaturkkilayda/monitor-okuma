@@ -194,7 +194,21 @@ Kamera bağlantısı `Bağlantıyı test et` butonu ile kontrol edilir. Test ba�
 
 Proje klasörü: `C:\Projeler\monitor-okuma`
 
-PowerShell'de önce sanal ortam etkinleştirilir:
+İlk kurulumda sanal ortam oluşturulur ve paketler yüklenir:
+
+```powershell
+cd C:\Projeler\monitor-okuma
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements-dev.txt
+```
+
+- `requirements.txt`: Uygulamanın (motor ve arayüz) çalışması için gereken paketler, sürümleri sabitlenmiş.
+- `requirements-dev.txt`: Bunlara ek olarak geliştirme ve test araçları (pytest, sahte M4 için Flask, sahte SMTP için aiosmtpd, paketleme için PyInstaller). İlk satırı `-r requirements.txt` olduğu için tek komut ikisini birden kurar.
+
+Testler sanal ortam etkinken `pytest` ile çalıştırılır.
+
+Sonraki çalışmalarda yalnızca sanal ortam etkinleştirilir:
 
 ```powershell
 cd C:\Projeler\monitor-okuma

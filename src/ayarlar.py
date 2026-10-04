@@ -10,13 +10,15 @@ AYAR_DOSYASI = Path("config/ayarlar.json")
 
 
 def _gizli_alanlara_uygula(ayarlar: dict, islem) -> dict:
-    """API anahtarına ve kamera şifrelerine işlemi uygular.
+    """API anahtarına, SMTP şifresine ve kamera şifrelerine işlemi uygular.
 
     Orijinal sözlüğe dokunmaz, kopya döndürür.
     """
     sonuc = copy.deepcopy(ayarlar)
     if "api_key" in sonuc:
         sonuc["api_key"] = islem(sonuc["api_key"])
+    if "sifre" in sonuc.get("smtp", {}):
+        sonuc["smtp"]["sifre"] = islem(sonuc["smtp"]["sifre"])
     for k in sonuc.get("kameralar", []):
         if "sifre" in k:
             k["sifre"] = islem(k["sifre"])

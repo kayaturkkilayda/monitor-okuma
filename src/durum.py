@@ -34,17 +34,28 @@ def gorunen_durum(d: dict, aktif: bool, aralik_sn: float, simdi: datetime,
 
 
 class KameraDurumu:
-    def __init__(self, log):
+    def __init__(self, log, bildirici=None):
+        """bildirici: ARIZA / DÜZELDİ anlarında e-posta gönderen nesne (yoksa yalnızca loglanır)."""
         self.log = log
+        self.bildirici = bildirici
         self._kilit = threading.Lock()
-        self._durum = {}
+        # Motor yeniden başlayınca süren bir arıza "yeni arıza" sayılıp tekrar bildirilmesin
+        self._durum = self._oku()
+
+    @staticmethod
+    def _oku() -> dict:
+        try:
+            durum = json.loads(DURUM_DOSYASI.read_text(encoding="utf-8"))
+            return durum if isinstance(durum, dict) else {}
+        except (OSError, ValueError):
+            return {}
 
     def bildir(self, etiket: str, basarili: bool, kaynak: str | None = None):
         """Her turun sonunda çağrılır. Durum değiştiyse loglar ve olaylara yazar.
 
         kaynak: olaylar tablosundaki kaynak (kamera kodu); verilmezse etiket kullanılır.
         """
-        bildirim = None
+        bildirim = eposta = None
         with self._kilit:
             d = self._durum.setdefault(etiket, {
                 "durum": "bilinmiyor", "ardisik_hata": 0,
@@ -55,6 +66,7 @@ class KameraDurumu:
             if basarili:
                 if d["durum"] == "arizali":
                     bildirim = ("INFO", f"{etiket} | DÜZELDİ (arıza başlangıcı: {d['ariza_baslangic']})")
+                    eposta = ("duzeldi", d["ariza_baslangic"], simdi)
                 d.update(durum="calisiyor", ardisik_hata=0,
                          son_basari=simdi, ariza_baslangic=None)
             else:
@@ -62,12 +74,16 @@ class KameraDurumu:
                 if d["ardisik_hata"] == ARIZA_ESIGI:
                     d.update(durum="arizali", ariza_baslangic=simdi)
                     bildirim = ("ERROR", f"{etiket} | ARIZA: {ARIZA_ESIGI} tur üst üste görüntü alınamadı")
+                    eposta = ("ariza", simdi, d["son_basari"])
 
             self._kaydet()
 
         # Veritabanı meşgulse diğer kameralar kilit yüzünden beklemesin diye kilidin dışında
         if bildirim:
             olay(self.log, bildirim[0], kaynak or etiket, bildirim[1])
+        if eposta and self.bildirici and kaynak:
+            # Yalnızca kuyruğa bırakılır; mail gönderimi kamera döngüsünü bekletmez
+            self.bildirici.kamera_olayi(eposta[0], kaynak, eposta[1], eposta[2])
 
     def _kaydet(self):
         gecici = DURUM_DOSYASI.with_suffix(".tmp")

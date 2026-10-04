@@ -49,6 +49,25 @@ CREATE TABLE IF NOT EXISTS olaylar (
     mesaj   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_olaylar_zaman ON olaylar (zaman);
+
+CREATE TABLE IF NOT EXISTS bildirimler (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    kamera_kodu      TEXT NOT NULL,
+    tur              TEXT NOT NULL CHECK (tur IN ('ariza', 'duzeldi')),
+    ariza_baslangic  TEXT NOT NULL DEFAULT '',
+    alicilar         TEXT NOT NULL,
+    konu             TEXT NOT NULL,
+    metin            TEXT NOT NULL,
+    durum            TEXT NOT NULL DEFAULT 'bekliyor'
+                     CHECK (durum IN ('bekliyor', 'gonderildi', 'vazgecildi')),
+    deneme           INTEGER NOT NULL DEFAULT 0,
+    sonraki_deneme   TEXT NOT NULL,
+    son_hata         TEXT,
+    olusturma_zamani TEXT NOT NULL,
+    gonderim_zamani  TEXT,
+    UNIQUE (kamera_kodu, tur, ariza_baslangic)      -- aynı arıza için tek mail
+);
+CREATE INDEX IF NOT EXISTS ix_bildirimler_durum ON bildirimler (durum, sonraki_deneme);
 """
 
 _hazir = set()            # bu programda tabloları hazırlanmış veritabanı dosyaları

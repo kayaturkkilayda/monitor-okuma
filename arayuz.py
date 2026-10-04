@@ -16,6 +16,7 @@ os.chdir(KOK)
 sys.path.insert(0, str(KOK / "src"))
 from ayarlar import ayarlari_oku, ayarlari_yaz, kameralari_olustur
 from ayar_sekmesi import AyarSekmesi
+from bildirim import gecersiz_adresler
 from durum import gorunen_durum
 from kayitlar_sekmesi import KayitlarSekmesi
 from loglar_sekmesi import LoglarSekmesi
@@ -44,7 +45,8 @@ class KameraFormu(tk.Toplevel):
     """
 
     ALANLAR = [("kod", "Kamera kodu"), ("yatak", "Yatak kodu"), ("adres", "Adres"),
-               ("kullanici", "Kullanıcı adı"), ("sifre", "Şifre")]
+               ("kullanici", "Kullanıcı adı"), ("sifre", "Şifre"),
+               ("bildirim_eposta", "Bildirim e-postası\n(virgülle; boşsa varsayılan)")]
 
     def __init__(self, ust, diger_kameralar: dict, kamera: dict | None = None):
         super().__init__(ust)
@@ -96,6 +98,9 @@ class KameraFormu(tk.Toplevel):
             return "IP kamera adresi http:// veya https:// ile başlamalı."
         if tip == "webcam" and not d["adres"].isdigit():
             return "Webcam için adres bir sayı olmalı (genelde 0)."
+        yanlis = gecersiz_adresler(d["bildirim_eposta"])
+        if yanlis:
+            return f"Geçersiz e-posta adresi: {', '.join(yanlis)}"
         return None
 
     def _kaydet(self):
@@ -109,6 +114,7 @@ class KameraFormu(tk.Toplevel):
             "kod": d["kod"], "yatak": d["yatak"], "tip": tip,
             "adres": int(d["adres"]) if tip == "webcam" else d["adres"],
             "kullanici": d["kullanici"], "sifre": d["sifre"],
+            "bildirim_eposta": d["bildirim_eposta"],
             "aktif": self.aktif.get(),
         }
         self.destroy()

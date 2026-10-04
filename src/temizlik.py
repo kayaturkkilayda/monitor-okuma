@@ -65,6 +65,20 @@ def eski_kayitlari_sil(kayit_saklama_gun: int, log) -> int:
     return silinen
 
 
+def eski_bildirimleri_sil(saklama_gun: int, log) -> int:
+    """Gönderilmiş ya da vazgeçilmiş, saklama_gun'den eski bildirim maillerini siler.
+
+    Bekleyen bildirimlere dokunmaz.
+    """
+    sinir = db_zamani(datetime.now() - timedelta(days=int(saklama_gun)))
+    with baglan() as db:
+        silinen = db.execute("DELETE FROM bildirimler WHERE durum != 'bekliyor'"
+                             " AND olusturma_zamani < ?", (sinir,)).rowcount
+    if silinen:
+        log.info(f"Temizlik: {silinen} eski bildirim kaydı veritabanından silindi")
+    return silinen
+
+
 def temizlik_dongusu(ayarlar: dict, log, dur):
     """Açılışta ve sonra her saat temizlik yapar."""
     while not dur.is_set():
@@ -72,8 +86,13 @@ def temizlik_dongusu(ayarlar: dict, log, dur):
             temizle(ayarlar.get("saklama_gun", 7), log)
         except Exception:
             log.exception("Temizlik sırasında hata")
+        saklama = ayarlar.get("kayit_saklama_gun", KAYIT_SAKLAMA_GUN)
         try:
-            eski_kayitlari_sil(ayarlar.get("kayit_saklama_gun", KAYIT_SAKLAMA_GUN), log)
+            eski_kayitlari_sil(saklama, log)
         except Exception:
             log.exception("Eski kayıtlar silinirken hata")
+        try:
+            eski_bildirimleri_sil(saklama, log)
+        except Exception:
+            log.exception("Eski bildirimler silinirken hata")
         dur.wait(3600)
