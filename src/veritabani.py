@@ -68,6 +68,46 @@ CREATE TABLE IF NOT EXISTS bildirimler (
     UNIQUE (kamera_kodu, tur, ariza_baslangic)      -- aynı arıza için tek mail
 );
 CREATE INDEX IF NOT EXISTS ix_bildirimler_durum ON bildirimler (durum, sonraki_deneme);
+
+CREATE TABLE IF NOT EXISTS kullanicilar (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    eposta           TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    ad               TEXT NOT NULL,
+    sifre_hash       TEXT NOT NULL,
+    dogrulandi       INTEGER NOT NULL DEFAULT 0,
+    yonetici         INTEGER NOT NULL DEFAULT 0,
+    olusturma_zamani TEXT NOT NULL,
+    son_giris        TEXT,
+    hatali_deneme    INTEGER NOT NULL DEFAULT 0,
+    kilit_bitis      TEXT
+);
+
+CREATE TABLE IF NOT EXISTS dogrulama_kodlari (
+    eposta        TEXT NOT NULL COLLATE NOCASE,
+    kod_hash      TEXT NOT NULL,
+    amac          TEXT NOT NULL CHECK (amac IN ('kayit', 'sifirlama')),
+    son_kullanma  TEXT NOT NULL,
+    deneme        INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (eposta, amac)          -- yeni kod istenince eskisinin yerine geçer
+);
+
+CREATE TABLE IF NOT EXISTS kamera_onay_kodlari (
+    kamera_kodu    TEXT PRIMARY KEY,     -- kamera başına tek geçerli kod, yenisi eskisinin yerine geçer
+    adres          TEXT NOT NULL,        -- kod bu adres için, adres değişirse kod geçmez
+    eposta         TEXT NOT NULL,        -- onay mailinin gittiği adres (onaylayan bu olur)
+    kod_hash       TEXT NOT NULL,
+    son_kullanma   TEXT NOT NULL,
+    deneme         INTEGER NOT NULL DEFAULT 0,
+    gonderen       TEXT NOT NULL,        -- maili gönderten kullanıcı
+    gonderim_zamani TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS oturumlar (   -- "Beni hatırla": cihazda saklanan anahtarın yalnızca hash'i
+    token_hash       TEXT PRIMARY KEY,
+    kullanici_id     INTEGER NOT NULL,
+    olusturma_zamani TEXT NOT NULL,
+    son_kullanma     TEXT NOT NULL
+);
 """
 
 _hazir = set()            # bu programda tabloları hazırlanmış veritabanı dosyaları

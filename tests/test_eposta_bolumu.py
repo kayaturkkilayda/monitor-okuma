@@ -3,6 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
+import arka_plan
+
 import eposta_bolumu as eb
 from ayar_sekmesi import AyarSekmesi
 
@@ -80,7 +82,7 @@ class HemenCalisan:
 def test_test_maili_sonucu_gosterilir(sekme, monkeypatch, sonuc, renk):
     giden = []
     monkeypatch.setattr(eb, "test_maili_gonder", lambda smtp: giden.append(smtp) or sonuc)
-    monkeypatch.setattr(eb.threading, "Thread", HemenCalisan)
+    monkeypatch.setattr(arka_plan.threading, "Thread", HemenCalisan)
     sekme.eposta._test()
     sekme.update()
     assert giden[0]["sunucu"] == "smtp.ornek.com"            # formdaki değerlerle denendi
@@ -101,7 +103,7 @@ def test_test_maili_hatali_formda_gonderilmez(sekme, monkeypatch):
 def _kamera_dogrula(**alanlar):
     import arayuz
     d = {"kod": "K1", "yatak": "Y1", "adres": "http://x", "kullanici": "", "sifre": "",
-         "bildirim_eposta": "", **alanlar}
+         "bildirim_eposta": "", "onay_eposta": "sahip@ornek.com", **alanlar}
     return arayuz.KameraFormu._dogrula(SimpleNamespace(diger={}), d, "ip")
 
 
@@ -114,3 +116,10 @@ def test_kamera_bildirim_adresleri_dogrulanir():
     assert _kamera_dogrula(bildirim_eposta="") is None
     assert _kamera_dogrula(bildirim_eposta="a@x.com, b@y.com") is None
     assert "yanlis" in _kamera_dogrula(bildirim_eposta="a@x.com, yanlis")
+
+
+def test_onaylayacak_eposta_zorunlu_ve_tek_adres():
+    assert "zorunlu" in _kamera_dogrula(onay_eposta="")
+    assert "zorunlu" in _kamera_dogrula(onay_eposta="yanlis")
+    assert "zorunlu" in _kamera_dogrula(onay_eposta="a@x.com, b@y.com")
+    assert _kamera_dogrula(onay_eposta="sahip@ornek.com") is None

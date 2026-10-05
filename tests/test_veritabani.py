@@ -155,3 +155,9 @@ def test_motor_ve_arayuz_ayni_anda_erisebilir(gecici_veritabani, tmp_path):
         assert db.execute("SELECT COUNT(*) FROM kayitlar WHERE durum = 'gonderildi'"
                           ).fetchone()[0] == adet // 2
     assert len(olaylar()) == yazilan_olay
+
+
+def test_sema_yorumlarinda_noktali_virgul_yok():
+    """Şema ';' ile bölünüp komut komut çalıştırılıyor; yorumdaki ';' komutu ortadan keser."""
+    import re
+    assert [y for y in re.findall(r"--[^\n]*", v.SEMA) if ";" in y] == []

@@ -1,8 +1,8 @@
 """Ayarlar sekmesindeki "E-posta (SMTP)" bölümü."""
-import threading
 import tkinter as tk
 from tkinter import ttk
 
+from arka_plan import arka_planda
 from bildirim import GUVENLIK_SECENEKLERI, gecersiz_adresler, test_maili_gonder
 
 VARSAYILAN_PORT = {"STARTTLS": 587, "SSL": 465, "Yok": 25}
@@ -81,12 +81,8 @@ class EpostaBolumu(ttk.LabelFrame):
         self.test_dugmesi.config(state="disabled", text="Gönderiliyor...")
         self.sonuc.config(text="")
 
-        def arka_planda():
-            basarili, aciklama = test_maili_gonder(smtp)
-            # Pencereyi sadece ana iş parçacığı güncelleyebilir; sonucu ona devrediyoruz
-            self.after(0, lambda: self.sonuc_goster(basarili, aciklama))
-
-        threading.Thread(target=arka_planda, daemon=True).start()
+        arka_planda(self, lambda: test_maili_gonder(smtp),
+                    lambda sonuc: self.sonuc_goster(*(sonuc or (False, "Beklenmeyen hata"))))
 
     def sonuc_goster(self, basarili: bool, aciklama: str):
         self.test_dugmesi.config(state="normal", text="Test maili gönder")

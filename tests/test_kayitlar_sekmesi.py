@@ -87,7 +87,10 @@ def test_bekleyen_ama_dosyasi_olmayan_goruntu():
 
 @pytest.fixture
 def sekme(tk_kok, ornekler):
+    """Düz liste görünümü (eski davranış aynen korunuyor)."""
     s = ks.KayitlarSekmesi(tk_kok)
+    s.gorunum.set(ks.LISTE)
+    s._gorunumu_degistir()
     yield s
     s.destroy()
 

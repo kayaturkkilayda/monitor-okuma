@@ -1,10 +1,16 @@
 """Arayüzün Ayarlar sekmesi."""
+import copy
+import re
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from ayarlar import ayarlari_yaz
+from ayarlar import ayarlari_yaz, degisen_alanlar
 from eposta_bolumu import EpostaBolumu
-from veritabani import KAYIT_SAKLAMA_GUN
+from kullanicilar import alan_adi_normallestir
+from veritabani import KAYIT_SAKLAMA_GUN, olay
+
+_ALAN_ADI = re.compile(r"^([a-z0-9-]+\.)+[a-z]{2,}$")
+YETKI_YOK = "Ayarları yalnızca yöneticiler değiştirebilir."
 
 # (ayar adı, ekranda görünen ad, alan türü)
 SATIRLAR = [
@@ -17,6 +23,7 @@ SATIRLAR = [
     ("kalite", "Kalite (1-100)", "metin"),
     ("saklama_gun", "Sahipsiz dosya saklama (gün)", "metin"),
     ("kayit_saklama_gun", "Gönderim kaydı saklama (gün)", "metin"),
+    ("izin_verilen_alan_adi", "Kayıt için izin verilen alan adı", "metin"),
 ]
 
 # Eski ayar dosyalarında olmayan alanlar için ekranda gösterilecek değer
@@ -32,10 +39,22 @@ SAYI_SINIRLARI = [
 ]
 
 
+def salt_okunur_yap(widget):
+    """Bir çerçevedeki bütün giriş alanlarını, seçim kutularını ve düğmeleri kapatır."""
+    for cocuk in widget.winfo_children():
+        if isinstance(cocuk, (ttk.Entry, ttk.Button, ttk.Checkbutton)):   # Combobox da bir Entry
+            cocuk.state(["disabled"])
+        salt_okunur_yap(cocuk)
+
+
 class AyarSekmesi(ttk.Frame):
-    def __init__(self, ust, ayarlar: dict):
+    def __init__(self, ust, ayarlar: dict, oturum: dict | None = None, log=None):
+        """oturum: giriş yapan kullanıcı. Yönetici değilse ayarlar görülür ama değiştirilemez."""
         super().__init__(ust, padding=15)
         self.ayarlar = ayarlar
+        self.oturum = oturum or {}
+        self.yonetici = bool(self.oturum.get("yonetici"))
+        self.log = log
         self.etiketler = {ad: etiket for ad, etiket, _ in SATIRLAR}
         self.degerler = {}
 
@@ -61,6 +80,11 @@ class AyarSekmesi(ttk.Frame):
         self.eposta = EpostaBolumu(self, ayarlar.get("smtp"))
         self.eposta.grid(row=0, column=2, rowspan=len(SATIRLAR) + 2, sticky="nw", padx=(25, 0))
 
+        if not self.yonetici:
+            salt_okunur_yap(self)
+            ttk.Label(self, text=YETKI_YOK, foreground="#b00020").grid(
+                row=len(SATIRLAR) + 2, column=1, sticky="w", pady=(10, 0))
+
     def _dogrula(self):
         """(yeni ayarlar, None) ya da (None, hata mesajı) döndürür."""
         d = {ad: v.get().strip() for ad, v in self.degerler.items()}
@@ -69,6 +93,9 @@ class AyarSekmesi(ttk.Frame):
             return None, "Tesis kodu boş olamaz."
         if d["api_url"] and not d["api_url"].startswith(("http://", "https://")):
             return None, "API adresi http:// veya https:// ile başlamalı (ya da boş bırakılmalı)."
+        d["izin_verilen_alan_adi"] = alan_adi_normallestir(d["izin_verilen_alan_adi"])
+        if d["izin_verilen_alan_adi"] and not _ALAN_ADI.match(d["izin_verilen_alan_adi"]):
+            return None, "İzin verilen alan adı örneğin akgun.com.tr biçiminde olmalı (@ olmadan)."
 
         sayilar = {}
         for ad, en_az, en_cok in SAYI_SINIRLARI:
@@ -90,11 +117,20 @@ class AyarSekmesi(ttk.Frame):
         return {**d, **sayilar, "gonderilince_sil": self.sil.get(), "smtp": smtp}, None
 
     def _kaydet(self):
+        if not self.yonetici:                 # düğme kapalı olsa da ikinci bir kontrol
+            messagebox.showerror("Yetki yok", YETKI_YOK)
+            return
         yeni, hata = self._dogrula()
         if hata:
             messagebox.showerror("Hatalı giriş", hata)
             return
+        eski = copy.deepcopy(self.ayarlar)
         self.ayarlar.update(yeni)
         ayarlari_yaz(self.ayarlar)
+        # Yalnızca değişen ayarların adları yazılır; değerleri (şifreler dahil) yazılmaz
+        degisen = ", ".join(degisen_alanlar(eski, self.ayarlar)) or "değişiklik yok"
+        if self.log:
+            olay(self.log, "INFO", "sistem",
+                 f"Ayarlar değiştirildi (değişen: {degisen}) — {self.oturum.get('eposta', '?')}")
         messagebox.showinfo("Kaydedildi", "Ayarlar kaydedildi.\n\n"
                             "Motor çalışıyorsa birkaç saniye içinde geçerli olur.")

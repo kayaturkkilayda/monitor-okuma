@@ -88,18 +88,6 @@ def test_soruda_adresteki_sifre_gizlenir():
     assert "http://10.0.0.5:8080/shot.jpg" in soru
 
 
-def test_onay_iste_evet_ve_hayir():
-    sorulan = []
-
-    def evet(baslik, mesaj):
-        sorulan.append(mesaj)
-        return True
-
-    assert onay.onayli_mi(onay.onay_iste(KAMERA, evet))
-    assert sorulan == [onay.onay_sorusu(KAMERA)]
-    assert onay.onay_iste(KAMERA, lambda b, m: False) is None
-
-
 # ---------- Motor ----------
 
 def test_motor_yalnizca_onayli_kameralari_alir():

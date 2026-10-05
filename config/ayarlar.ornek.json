@@ -9,5 +9,6 @@
   "saklama_gun": 7,
   "kayit_saklama_gun": 90,
   "gonderilince_sil": true,
+  "izin_verilen_alan_adi": "",
   "kameralar": []
 }

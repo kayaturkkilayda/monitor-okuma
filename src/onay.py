@@ -60,16 +60,6 @@ def onay_sorusu(kamera: dict) -> str:
             "Bu kameranın kullanımını onaylıyor musunuz?")
 
 
-def onay_iste(kamera: dict, sor) -> dict | None:
-    """sor(baslik, mesaj) -> bool ile kullanıcıya sorar (arayüzde evet/hayır penceresi).
-
-    Onaylanırsa onaylı kamerayı, reddedilirse None döndürür.
-    """
-    if sor("Kamera kullanım onayı", onay_sorusu(kamera)):
-        return onay_ver(kamera)
-    return None
-
-
 def onayli_kameralar(kameralar: list[dict], log, bildirilenler: set) -> list[dict]:
     """Motor için: yalnızca onaylı kameraları döndürür.
 
