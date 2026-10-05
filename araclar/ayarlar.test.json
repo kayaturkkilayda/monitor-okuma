@@ -1,0 +1,38 @@
+{
+  "_aciklama": "SADECE TEST ICINDIR. Sahte kamera ve sahte M4 ile demo yapmak icin hazir ayar. Gercek kurulumda kullanilmaz.",
+  "tesis_kodu": "TEST",
+  "api_url": "http://127.0.0.1:9000/api/goruntu",
+  "api_key": "test-anahtar",
+  "gonderim_araligi_sn": 20,
+  "ikinci_cekim_gecikme_sn": 2,
+  "format": "jpg",
+  "kalite": 85,
+  "saklama_gun": 7,
+  "kayit_saklama_gun": 90,
+  "gonderilince_sil": true,
+  "izin_verilen_alan_adi": [],
+  "smtp": {
+    "sunucu": "",
+    "port": 587,
+    "guvenlik": "STARTTLS",
+    "kullanici": "",
+    "sifre": "",
+    "gonderen": "",
+    "varsayilan_alici": ""
+  },
+  "kameralar": [
+    {
+      "kod": "K1",
+      "yatak": "Y1",
+      "tip": "ip",
+      "adres": "http://127.0.0.1:8080/K1/shot.jpg",
+      "kullanici": "",
+      "sifre": "",
+      "bildirim_eposta": "",
+      "onay_eposta": "test@ornek.com",
+      "aktif": true,
+      "onay_zamani": "2026-01-01 00:00:00",
+      "onaylayan": "test (hazir demo ayari)"
+    }
+  ]
+}

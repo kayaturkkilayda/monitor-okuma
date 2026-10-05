@@ -5,6 +5,8 @@ from ayar_sekmesi import AyarSekmesi
 TEMEL = {"tesis_kodu": "H01", "api_url": "", "api_key": "", "gonderim_araligi_sn": 60,
          "ikinci_cekim_gecikme_sn": 5, "format": "avif", "kalite": 85, "saklama_gun": 7,
          "gonderilince_sil": True, "kameralar": []}
+# Ayarlar sekmesi yalnızca yöneticide açılır; doğrulama da yönetici oturumu ister
+YONETICI = {"eposta": "admin@akgun.com.tr", "ad": "Yönetici", "yonetici": True}
 
 
 @pytest.fixture
@@ -13,7 +15,7 @@ def kok(tk_kok):
 
 
 def test_eski_ayar_dosyasinda_kayit_saklama_varsayilan_90_gorunur(kok):
-    sekme = AyarSekmesi(kok, dict(TEMEL))
+    sekme = AyarSekmesi(kok, dict(TEMEL), YONETICI)
     assert sekme.degerler["kayit_saklama_gun"].get() == "90"
     yeni, hata = sekme._dogrula()
     assert hata is None
@@ -22,7 +24,7 @@ def test_eski_ayar_dosyasinda_kayit_saklama_varsayilan_90_gorunur(kok):
 
 @pytest.mark.parametrize("deger", ["0", "3651", "abc"])
 def test_kayit_saklama_gecersiz_deger_reddedilir(kok, deger):
-    sekme = AyarSekmesi(kok, {**TEMEL, "kayit_saklama_gun": 90})
+    sekme = AyarSekmesi(kok, {**TEMEL, "kayit_saklama_gun": 90}, YONETICI)
     sekme.degerler["kayit_saklama_gun"].set(deger)
     yeni, hata = sekme._dogrula()
     assert yeni is None

@@ -1,0 +1,8 @@
+# Test araclarinin (sahte kamera + sahte M4) calismasi icin gereken paketler.
+# Kurulum:  python -m pip install -r requirements.txt
+#
+# sahte_kamera.py  -> numpy, opencv-python
+# sahte_m4.py      -> Flask
+numpy==2.5.3
+opencv-python==5.0.0.93
+Flask==3.1.3

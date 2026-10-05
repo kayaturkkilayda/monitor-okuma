@@ -162,10 +162,13 @@ class Uygulama(tk.Tk):
         self.loglar_sekmesi = LoglarSekmesi(sekmeler)
         sekmeler.add(self.loglar_sekmesi, text="Loglar")
 
-        self.ayar_sekmesi = AyarSekmesi(sekmeler, self.ayarlar, oturum, log)
-        sekmeler.add(self.ayar_sekmesi, text="Ayarlar")
-
+        # Ayarlar ve Kullanıcılar yalnızca yöneticide: SMTP, M4/API anahtarı ve izin verilen
+        # alan adları normal kullanıcıya hiç gösterilmez. Sekme gizlemek tek başına yeterli
+        # değil; AyarSekmesi kaydetmeyi ayrıca yönetici olmayana kapatır.
         if oturum.get("yonetici"):
+            self.ayar_sekmesi = AyarSekmesi(sekmeler, self.ayarlar, oturum, log)
+            sekmeler.add(self.ayar_sekmesi, text="Ayarlar")
+
             self.kullanicilar_sekmesi = KullanicilarSekmesi(sekmeler, oturum, log)
             sekmeler.add(self.kullanicilar_sekmesi, text="Kullanıcılar")
 

@@ -22,9 +22,17 @@ def test_oneri_olmayan_durumlar():
     assert eg.alan_onerileri("a@b@c", alanlar) == []
 
 
-def test_kayitta_yalnizca_izinli_alan_onerilir():
+def test_kayitta_yalnizca_izinli_alanlar_onerilir():
     assert eg.oneri_alanlari("@Akgun.com.tr", yalnizca_izinli=True) == ["akgun.com.tr"]
-    assert eg.oneri_alanlari("", yalnizca_izinli=True)[0] == "gmail.com"   # ayar yoksa yaygınlar
+    assert eg.oneri_alanlari([" @AKGUN.com.tr ", "Hastane1.com.tr"],
+                             yalnizca_izinli=True) == ["akgun.com.tr", "hastane1.com.tr"]
+    assert eg.oneri_alanlari([], yalnizca_izinli=True)[0] == "gmail.com"   # ayar yoksa yaygınlar
+
+
+def test_izinli_alanlar_onerilerin_basinda():
+    alanlar = eg.oneri_alanlari(["akgun.com.tr", "hastane1.com.tr"])
+    assert alanlar[:2] == ["akgun.com.tr", "hastane1.com.tr"]
+    assert "gmail.com" in alanlar                       # liste doluyken de yaygınlar önerilir
 
 
 def test_kurum_alan_adi_en_basta_ve_tekrarsiz():

@@ -46,7 +46,9 @@ def test_hatali_ayar(alan, deger, mesaj):
 
 @pytest.fixture
 def sekme(tk_kok):
-    s = AyarSekmesi(tk_kok, {**TEMEL, "smtp": dict(SMTP)})
+    # SMTP ayarları yalnızca yöneticide görünür; sekme hep yönetici oturumuyla açılır
+    s = AyarSekmesi(tk_kok, {**TEMEL, "smtp": dict(SMTP)},
+                    {"eposta": "admin@akgun.com.tr", "ad": "Yönetici", "yonetici": True})
     yield s
     s.destroy()
 

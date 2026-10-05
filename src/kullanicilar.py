@@ -81,9 +81,33 @@ def alan_adi_normallestir(alan: str | None) -> str:
     return (alan or "").strip().lower().lstrip("@")
 
 
-def alan_adi_izinli_mi(eposta: str, izinli_alan: str | None) -> bool:
-    izinli = alan_adi_normallestir(izinli_alan)
-    return bool(izinli) and eposta_normallestir(eposta).split("@")[-1] == izinli
+def alan_adi_listesi(izinli_alanlar) -> list[str]:
+    """İzin verilen alan adlarını normalleştirilmiş bir listeye çevirir.
+
+    Tek bir metin de kabul edilir: eski ayar dosyalarındaki
+    "izin_verilen_alan_adi": "akgun.com.tr" biçimi böyle çalışmaya devam eder.
+    Boşlar atılır, sıra korunarak tekrarlar temizlenir.
+    """
+    if izinli_alanlar is None:
+        ham = []
+    elif isinstance(izinli_alanlar, str):
+        ham = [izinli_alanlar]
+    else:
+        ham = list(izinli_alanlar)
+    liste = []
+    for alan in ham:
+        alan = alan_adi_normallestir(alan)
+        if alan and alan not in liste:
+            liste.append(alan)
+    return liste
+
+
+def alan_adi_izinli_mi(eposta: str, izinli_alanlar) -> bool:
+    """Liste boşsa her geçerli e-posta alan adı kabul edilir; doluysa yalnızca listedekiler."""
+    izinli = alan_adi_listesi(izinli_alanlar)
+    if not izinli:
+        return True
+    return eposta_normallestir(eposta).split("@")[-1] in izinli
 
 
 def _ad_kontrol(ad: str) -> str:
@@ -177,7 +201,7 @@ def kod_maili(amac: str, kod: str) -> tuple[str, str]:
 
 # ---------- Kayıt ----------
 
-def kayit_baslat(eposta: str, ad: str, sifre: str, tekrar: str | None, izinli_alan: str | None,
+def kayit_baslat(eposta: str, ad: str, sifre: str, tekrar: str | None, izinli_alanlar=None,
                  simdi: datetime | None = None) -> tuple[str, str]:
     """Doğrulanmamış hesap açar ve kod üretir: (normalleştirilmiş e-posta, kod).
 
@@ -185,10 +209,9 @@ def kayit_baslat(eposta: str, ad: str, sifre: str, tekrar: str | None, izinli_al
     """
     simdi = simdi or datetime.now()
     eposta, ad = eposta_kontrol(eposta), _ad_kontrol(ad)
-    if not alan_adi_normallestir(izinli_alan):
-        raise KullaniciHatasi("Kayıt için izin verilen alan adı ayarlanmamış; yöneticinize başvurun.")
-    if not alan_adi_izinli_mi(eposta, izinli_alan):
-        raise KullaniciHatasi(f"Yalnızca @{alan_adi_normallestir(izinli_alan)} adresleri kayıt olabilir.")
+    if not alan_adi_izinli_mi(eposta, izinli_alanlar):
+        izinli = ", ".join("@" + a for a in alan_adi_listesi(izinli_alanlar))
+        raise KullaniciHatasi(f"Yalnızca {izinli} adresleri kayıt olabilir.")
     sifre_kontrol(sifre, tekrar)
     sifre_hash = hashle(sifre)
     with baglan() as db:

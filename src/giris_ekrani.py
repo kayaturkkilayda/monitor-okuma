@@ -20,7 +20,7 @@ SMTP_YOK = "E-posta ayarları yapılmamış, yöneticinize başvurun."
 class GirisEkrani(ttk.Frame):
     """girildi(kullanici) başarılı girişte çağrılır.
 
-    ayarlari_getir() her işlemde güncel ayarları döndürür (SMTP ve izin verilen alan adı
+    ayarlari_getir() her işlemde güncel ayarları döndürür (SMTP ve izin verilen alan adları
     giriş penceresi açıkken yönetici tarafından değiştirilmiş olabilir).
     """
 
@@ -110,7 +110,7 @@ class GirisEkrani(ttk.Frame):
 
     def _oneri_alanlari(self, ekran: str) -> list[str]:
         izinli = (self.ayarlari_getir() or {}).get("izin_verilen_alan_adi")
-        # Kayıtta yalnızca izin verilen alan adı önerilir; diğerleri zaten kabul edilmez
+        # Kayıtta yalnızca izin verilen alan adları önerilir; diğerleri zaten kabul edilmez
         return oneri_alanlari(izinli, yalnizca_izinli=(ekran == "kayit"))
 
     def _sifreyi_goster(self, ekran: str):

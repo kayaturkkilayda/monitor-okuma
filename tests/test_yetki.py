@@ -10,7 +10,8 @@ from veritabani import baglan
 
 TEMEL = {"tesis_kodu": "H01", "api_url": "", "api_key": "EskiAnahtar", "gonderim_araligi_sn": 60,
          "ikinci_cekim_gecikme_sn": 5, "format": "avif", "kalite": 85, "saklama_gun": 7,
-         "gonderilince_sil": True, "kameralar": [], "izin_verilen_alan_adi": "akgun.com.tr"}
+         "gonderilince_sil": True, "kameralar": [],
+         "izin_verilen_alan_adi": ["akgun.com.tr"], "smtp": {}}
 YONETICI = {"eposta": "admin@akgun.com.tr", "ad": "Yönetici", "yonetici": True}
 KULLANICI = {"eposta": "ayse@akgun.com.tr", "ad": "Ayşe", "yonetici": False}
 LOG = logging.getLogger("test-yetki")
@@ -40,15 +41,17 @@ def alanlar(sekme):
 
 # ---------- Ayarlar sekmesi ----------
 
-def test_yonetici_olmayan_ayarlari_gorur_ama_degistiremez(tk_kok, monkeypatch):
+def test_yonetici_olmayan_ayarlari_degistiremez(tk_kok, monkeypatch):
+    """Sekme normal kullanıcıya hiç gösterilmez; gösterilse bile hiçbir yoldan kaydedemez."""
     yazilan = []
     monkeypatch.setattr(ayar_sekmesi, "ayarlari_yaz", yazilan.append)
     monkeypatch.setattr(ayar_sekmesi.messagebox, "showerror", lambda *a: None)
     sekme = ayar_sekmesi.AyarSekmesi(tk_kok, dict(TEMEL), KULLANICI, LOG)
     try:
-        assert sekme.degerler["tesis_kodu"].get() == "H01"               # görülebiliyor
         assert alanlar(sekme) and all(kapali_mi(a) for a in alanlar(sekme))
-        sekme._kaydet()                                                  # düğmeyi atlatsa bile
+        yeni, hata = sekme._dogrula()                   # fonksiyon seviyesinde yetki kontrolü
+        assert yeni is None and hata == ayar_sekmesi.YETKI_YOK
+        sekme._kaydet()                                 # düğmeyi atlatsa bile
         assert yazilan == []
     finally:
         sekme.destroy()
@@ -73,19 +76,57 @@ def test_yonetici_kaydeder_ve_olaylara_kim_ne_degistirdi_yazilir(tk_kok, monkeyp
         sekme.destroy()
 
 
-@pytest.mark.parametrize("girilen,beklenen,hata", [
-    ("@Akgun.Com.TR", "akgun.com.tr", None), ("", "", None),
-    ("akgun", None, "akgun.com.tr biçiminde"), ("ayse@akgun.com.tr", None, "biçiminde"),
+# ---------- İzin verilen alan adları (dinamik liste) ----------
+
+@pytest.mark.parametrize("girilenler,beklenen,hata", [
+    ([" @Akgun.Com.TR "], ["akgun.com.tr"], None),                      # trim + küçük harf + @
+    ([], [], None),                                                      # boş liste: whitelist yok
+    (["", "   "], [], None),                                             # boş satırlar atılır
+    (["akgun.com.tr", "HASTANE1.com.tr"], ["akgun.com.tr", "hastane1.com.tr"], None),
+    (["akgun.com.tr", "akgun.com.tr"], ["akgun.com.tr"], None),          # tekrar temizlenir
+    (["akgun"], None, "akgun.com.tr"),                                   # geçersiz: TLD yok
+    (["ayse@akgun.com.tr"], None, "geçerli bir alan adı değil"),         # geçersiz: yerel kısım var
+    (["akgun.com.tr", "bozuk alan"], None, "bozuk alan"),                # biri bozuksa reddedilir
 ])
-def test_izin_verilen_alan_adi_dogrulamasi(tk_kok, girilen, beklenen, hata):
+def test_izin_verilen_alan_adlari_dogrulamasi(tk_kok, girilenler, beklenen, hata):
     sekme = ayar_sekmesi.AyarSekmesi(tk_kok, dict(TEMEL), YONETICI, LOG)
     try:
-        sekme.degerler["izin_verilen_alan_adi"].set(girilen)
+        for kayit in list(sekme.alan_adlari.satirlar):                    # ayardan gelenleri boşalt
+            sekme.alan_adlari.sil(kayit)
+        for girilen in girilenler:
+            sekme.alan_adlari.ekle(girilen)
         yeni, mesaj = sekme._dogrula()
         if hata:
             assert yeni is None and hata in mesaj
         else:
             assert yeni["izin_verilen_alan_adi"] == beklenen
+    finally:
+        sekme.destroy()
+
+
+def test_alan_adi_satirlari_eklenip_silinebilir(tk_kok):
+    sekme = ayar_sekmesi.AyarSekmesi(tk_kok, dict(TEMEL), YONETICI, LOG)
+    try:
+        liste = sekme.alan_adlari
+        assert liste.degerler() == ["akgun.com.tr"]                       # ayardan geldi
+        liste.ekle("hastane1.com.tr")
+        assert liste.degerler() == ["akgun.com.tr", "hastane1.com.tr"]
+        liste.sil(liste.satirlar[0])
+        assert liste.degerler() == ["hastane1.com.tr"]
+        liste.sil(liste.satirlar[0])
+        assert liste.degerler() == [] and liste.BOS_UYARI in liste.bilgi.cget("text")
+    finally:
+        sekme.destroy()
+
+
+def test_eski_tek_string_ayar_listede_gorunur(tk_kok):
+    """Eski config: "izin_verilen_alan_adi": "akgun.com.tr" → tek satırlık liste."""
+    sekme = ayar_sekmesi.AyarSekmesi(
+        tk_kok, {**TEMEL, "izin_verilen_alan_adi": "akgun.com.tr"}, YONETICI, LOG)
+    try:
+        assert sekme.alan_adlari.degerler() == ["akgun.com.tr"]
+        yeni, hata = sekme._dogrula()
+        assert hata is None and yeni["izin_verilen_alan_adi"] == ["akgun.com.tr"]
     finally:
         sekme.destroy()
 
@@ -152,13 +193,15 @@ def _ust_yazi(uyg):
 def test_ana_pencerede_kullanici_adi_ve_cikis(uygulama):
     uyg = uygulama(KULLANICI)
     assert _ust_yazi(uyg) == ["Çıkış", "Ayşe (ayse@akgun.com.tr)"]
-    assert "Kullanıcılar" not in _sekme_adlari(uyg)                   # yalnızca yönetici görür
+    # Yalnızca yönetici görür: SMTP, M4/API anahtarı ve izin verilen alan adları Ayarlar'da
+    assert _sekme_adlari(uyg) == ["Kameralar", "Kayıtlar", "Loglar"]
+    assert not hasattr(uyg, "ayar_sekmesi") and not hasattr(uyg, "kullanicilar_sekmesi")
 
 
-def test_yonetici_kullanicilar_sekmesini_gorur(uygulama):
+def test_yonetici_ayarlar_ve_kullanicilar_sekmelerini_gorur(uygulama):
     uyg = uygulama(YONETICI)
     assert _ust_yazi(uyg)[1] == "Yönetici (admin@akgun.com.tr) · Yönetici"
-    assert _sekme_adlari(uyg)[-1] == "Kullanıcılar"
+    assert _sekme_adlari(uyg) == ["Kameralar", "Kayıtlar", "Loglar", "Ayarlar", "Kullanıcılar"]
 
 
 def test_cikis_olaylara_yazilir(uygulama):

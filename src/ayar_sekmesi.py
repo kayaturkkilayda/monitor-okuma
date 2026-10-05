@@ -6,7 +6,7 @@ from tkinter import messagebox, ttk
 
 from ayarlar import ayarlari_yaz, degisen_alanlar
 from eposta_bolumu import EpostaBolumu
-from kullanicilar import alan_adi_normallestir
+from kullanicilar import alan_adi_listesi
 from veritabani import KAYIT_SAKLAMA_GUN, olay
 
 _ALAN_ADI = re.compile(r"^([a-z0-9-]+\.)+[a-z]{2,}$")
@@ -23,7 +23,6 @@ SATIRLAR = [
     ("kalite", "Kalite (1-100)", "metin"),
     ("saklama_gun", "Sahipsiz dosya saklama (gün)", "metin"),
     ("kayit_saklama_gun", "Gönderim kaydı saklama (gün)", "metin"),
-    ("izin_verilen_alan_adi", "Kayıt için izin verilen alan adı", "metin"),
 ]
 
 # Eski ayar dosyalarında olmayan alanlar için ekranda gösterilecek değer
@@ -47,9 +46,72 @@ def salt_okunur_yap(widget):
         salt_okunur_yap(cocuk)
 
 
+class AlanAdiListesi(ttk.Frame):
+    """Kayıt için izin verilen alan adlarının dinamik listesi.
+
+    Her satırda bir giriş alanı ve o satırı silen bir "−" düğmesi vardır; altta
+    "+ Alan adı ekle" yeni satır açar. Liste boş bırakılırsa bütün geçerli
+    e-posta alan adları kabul edilir (bkz. kullanicilar.alan_adi_izinli_mi).
+    """
+
+    BOS_UYARI = "Liste boşsa bütün geçerli e-posta adresleri kayıt olabilir."
+
+    def __init__(self, ust, alanlar=None):
+        super().__init__(ust)
+        self.satirlar = []                      # [(çerçeve, StringVar)]
+        self.satir_cercevesi = ttk.Frame(self)
+        self.satir_cercevesi.grid(row=0, column=0, sticky="w")
+        self.ekle_dugmesi = ttk.Button(self, text="+ Alan adı ekle", command=self.ekle)
+        self.ekle_dugmesi.grid(row=1, column=0, sticky="w", pady=(4, 0))
+        self.bilgi = ttk.Label(self, text="", foreground="#555555", font=("Segoe UI", 8))
+        self.bilgi.grid(row=2, column=0, sticky="w")
+        for alan in alan_adi_listesi(alanlar):
+            self.ekle(alan)
+        self._bilgi_guncelle()
+
+    def ekle(self, alan: str = ""):
+        satir = ttk.Frame(self.satir_cercevesi)
+        satir.pack(anchor="w", pady=1)
+        deger = tk.StringVar(value=alan)
+        giris = ttk.Entry(satir, textvariable=deger, width=40)
+        giris.pack(side="left")
+        kayit = (satir, deger)
+        ttk.Button(satir, text="−", width=3,
+                   command=lambda k=kayit: self.sil(k)).pack(side="left", padx=(4, 0))
+        self.satirlar.append(kayit)
+        self._bilgi_guncelle()
+        return giris
+
+    def sil(self, kayit):
+        if kayit in self.satirlar:
+            self.satirlar.remove(kayit)
+            kayit[0].destroy()
+            self._bilgi_guncelle()
+
+    def _bilgi_guncelle(self):
+        self.bilgi.config(text="" if self.degerler() else self.BOS_UYARI)
+
+    def degerler(self) -> list[str]:
+        """Girilen alan adları: kırpılmış, küçük harfe çevrilmiş, @'siz ve tekrarsız."""
+        return alan_adi_listesi(d.get() for _, d in self.satirlar)
+
+    def dogrula(self) -> tuple[list[str] | None, str | None]:
+        """(alan adları, None) ya da (None, hata mesajı). Boş satırlar sessizce atılır."""
+        alanlar = self.degerler()
+        for alan in alanlar:
+            if not _ALAN_ADI.match(alan):
+                return None, (f"'{alan}' geçerli bir alan adı değil; örneğin akgun.com.tr "
+                              "biçiminde olmalı (@ olmadan).")
+        return alanlar, None
+
+
 class AyarSekmesi(ttk.Frame):
     def __init__(self, ust, ayarlar: dict, oturum: dict | None = None, log=None):
-        """oturum: giriş yapan kullanıcı. Yönetici değilse ayarlar görülür ama değiştirilemez."""
+        """oturum: giriş yapan kullanıcı.
+
+        Sekme yalnızca yöneticiye gösterilir (bkz. arayuz.Uygulama). Yine de yönetici
+        olmayan bir oturumla açılırsa alanlar kapatılır ve kaydetme reddedilir.
+        """
         super().__init__(ust, padding=15)
         self.ayarlar = ayarlar
         self.oturum = oturum or {}
@@ -70,32 +132,40 @@ class AyarSekmesi(ttk.Frame):
             alan.grid(row=i, column=1, sticky="w", pady=5)
             self.degerler[ad] = deger
 
+        ttk.Label(self, text="Kayıt için izin verilen\nalan adları").grid(
+            row=len(SATIRLAR), column=0, sticky="nw", pady=5, padx=(0, 15))
+        self.alan_adlari = AlanAdiListesi(self, ayarlar.get("izin_verilen_alan_adi"))
+        self.alan_adlari.grid(row=len(SATIRLAR), column=1, sticky="w", pady=5)
+
         self.sil = tk.BooleanVar(value=ayarlar.get("gonderilince_sil", True))
         ttk.Checkbutton(self, text="Gönderilen görüntüleri hemen sil",
-                        variable=self.sil).grid(row=len(SATIRLAR), column=1, sticky="w", pady=5)
+                        variable=self.sil).grid(row=len(SATIRLAR) + 1, column=1, sticky="w", pady=5)
 
         ttk.Button(self, text="Kaydet", command=self._kaydet).grid(
-            row=len(SATIRLAR) + 1, column=1, sticky="w", pady=(15, 0))
+            row=len(SATIRLAR) + 2, column=1, sticky="w", pady=(15, 0))
 
         self.eposta = EpostaBolumu(self, ayarlar.get("smtp"))
-        self.eposta.grid(row=0, column=2, rowspan=len(SATIRLAR) + 2, sticky="nw", padx=(25, 0))
+        self.eposta.grid(row=0, column=2, rowspan=len(SATIRLAR) + 3, sticky="nw", padx=(25, 0))
 
         if not self.yonetici:
             salt_okunur_yap(self)
             ttk.Label(self, text=YETKI_YOK, foreground="#b00020").grid(
-                row=len(SATIRLAR) + 2, column=1, sticky="w", pady=(10, 0))
+                row=len(SATIRLAR) + 3, column=1, sticky="w", pady=(10, 0))
 
     def _dogrula(self):
         """(yeni ayarlar, None) ya da (None, hata mesajı) döndürür."""
+        if not self.yonetici:            # arayüzden bağımsız, fonksiyon seviyesinde yetki kontrolü
+            return None, YETKI_YOK
         d = {ad: v.get().strip() for ad, v in self.degerler.items()}
 
         if not d["tesis_kodu"]:
             return None, "Tesis kodu boş olamaz."
         if d["api_url"] and not d["api_url"].startswith(("http://", "https://")):
             return None, "API adresi http:// veya https:// ile başlamalı (ya da boş bırakılmalı)."
-        d["izin_verilen_alan_adi"] = alan_adi_normallestir(d["izin_verilen_alan_adi"])
-        if d["izin_verilen_alan_adi"] and not _ALAN_ADI.match(d["izin_verilen_alan_adi"]):
-            return None, "İzin verilen alan adı örneğin akgun.com.tr biçiminde olmalı (@ olmadan)."
+        alanlar, hata = self.alan_adlari.dogrula()
+        if hata:
+            return None, hata
+        d["izin_verilen_alan_adi"] = alanlar
 
         sayilar = {}
         for ad, en_az, en_cok in SAYI_SINIRLARI:

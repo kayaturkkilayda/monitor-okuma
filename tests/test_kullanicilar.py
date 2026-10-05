@@ -143,13 +143,59 @@ def test_izin_verilmeyen_alan_adi_kayit_olamaz():
     assert satir("kullanicilar", "ayse@gmail.com") is None
 
 
-def test_alan_adi_ayarlanmamissa_kimse_kayit_olamaz():
-    with pytest.raises(KullaniciHatasi, match="ayarlanmamış"):
-        ku.kayit_baslat("ayse@akgun.com.tr", "Ayşe", "GizliSifre1", "GizliSifre1", "", SIMDI)
+@pytest.mark.parametrize("bos", [None, "", [], ["", "  "], "   "])
+def test_alan_adi_listesi_bossa_her_gecerli_eposta_kayit_olabilir(bos):
+    """Liste boşsa whitelist uygulanmaz: geçerli her adres kayıt olabilir."""
+    assert ku.alan_adi_izinli_mi("test@gmail.com", bos)
+    eposta, kod = ku.kayit_baslat("test@gmail.com", "Test", "GizliSifre1", "GizliSifre1", bos, SIMDI)
+    assert ku.kayit_dogrula(eposta, kod, SIMDI)["eposta"] == "test@gmail.com"
+
+
+def test_alan_adi_listesi_bos_olsa_bile_gecersiz_eposta_reddedilir():
+    with pytest.raises(KullaniciHatasi, match="Geçerli bir e-posta"):
+        ku.kayit_baslat("ayse@gmail", "Ayşe", "GizliSifre1", "GizliSifre1", [], SIMDI)
+
+
+def test_tek_domain_listesi():
+    assert ku.alan_adi_izinli_mi("ayse@akgun.com.tr", ["akgun.com.tr"])
+    assert not ku.alan_adi_izinli_mi("ayse@gmail.com", ["akgun.com.tr"])
+
+
+def test_birden_fazla_domain_listedekiler_kabul_digerleri_reddedilir():
+    liste = ["akgun.com.tr", "hastane1.com.tr"]
+    assert ku.alan_adi_izinli_mi("ayse@akgun.com.tr", liste)
+    assert ku.alan_adi_izinli_mi("veli@hastane1.com.tr", liste)
+    assert not ku.alan_adi_izinli_mi("ayse@gmail.com", liste)
+    assert not ku.alan_adi_izinli_mi("ayse@sahte-hastane1.com.tr", liste)
+
+    eposta, kod = ku.kayit_baslat("veli@hastane1.com.tr", "Veli", "GizliSifre1", "GizliSifre1",
+                                  liste, SIMDI)
+    assert ku.kayit_dogrula(eposta, kod, SIMDI)["eposta"] == "veli@hastane1.com.tr"
+    with pytest.raises(KullaniciHatasi, match="@akgun.com.tr, @hastane1.com.tr"):
+        ku.kayit_baslat("ayse@gmail.com", "Ayşe", "GizliSifre1", "GizliSifre1", liste, SIMDI)
 
 
 def test_alan_adi_buyuk_kucuk_harf_ve_at_isareti():
     assert ku.alan_adi_izinli_mi("Ayse@AKGUN.com.tr", "@Akgun.Com.Tr")
+    assert ku.alan_adi_izinli_mi("Ayse@AKGUN.com.tr", [" @AKGUN.COM.TR "])
+
+
+def test_alan_adi_listesi_normallestirir():
+    """trim + lowercase + baştaki @ kaldırılır; boşlar atılır, tekrarlar temizlenir."""
+    assert ku.alan_adi_listesi([" @AKGUN.COM.TR ", "Hastane1.Com.TR", "", "  ",
+                                "akgun.com.tr"]) == ["akgun.com.tr", "hastane1.com.tr"]
+    assert ku.alan_adi_listesi(None) == []
+    assert ku.alan_adi_listesi("") == []
+
+
+def test_eski_tek_string_config_calisir():
+    """Eski ayar dosyası ("izin_verilen_alan_adi": "akgun.com.tr") tek elemanlı liste gibi çalışır."""
+    assert ku.alan_adi_listesi("akgun.com.tr") == ["akgun.com.tr"]
+    assert ku.alan_adi_izinli_mi("ayse@akgun.com.tr", "akgun.com.tr")
+    assert not ku.alan_adi_izinli_mi("ayse@gmail.com", "akgun.com.tr")
+    eposta, kod = ku.kayit_baslat("ayse@akgun.com.tr", "Ayşe", "GizliSifre1", "GizliSifre1",
+                                  "akgun.com.tr", SIMDI)
+    assert ku.kayit_dogrula(eposta, kod, SIMDI)["dogrulandi"]
 
 
 # ---------- Şifre kuralı ----------

@@ -6,7 +6,7 @@ Adresin gerçek olduğu, kayıtta o adrese giden doğrulama koduyla kanıtlanır
 import tkinter as tk
 from tkinter import ttk
 
-from kullanicilar import KullaniciHatasi, alan_adi_normallestir, eposta_kontrol
+from kullanicilar import KullaniciHatasi, alan_adi_listesi, eposta_kontrol
 
 YAYGIN_ALANLAR = ["gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "icloud.com", "yandex.com"]
 EN_FAZLA_ONERI = 6
@@ -21,15 +21,16 @@ def eposta_gecerli_mi(metin: str) -> bool:
         return False
 
 
-def oneri_alanlari(izinli_alan: str | None, yalnizca_izinli: bool = False) -> list[str]:
-    """Önerilecek alan adları: kurumun alan adı en başta.
+def oneri_alanlari(izinli_alanlar, yalnizca_izinli: bool = False) -> list[str]:
+    """Önerilecek alan adları: kurumun izin verdiği alan adları en başta.
 
-    Kayıt ekranında yalnızca izin verilen alan adı önerilir; diğerleri zaten reddedilir.
+    Kayıt ekranında yalnızca izin verilen alan adları önerilir; diğerleri zaten reddedilir.
+    İzin listesi boşsa (her alan adı kabul ediliyorsa) yaygın alan adları önerilir.
     """
-    izinli = alan_adi_normallestir(izinli_alan)
+    izinli = alan_adi_listesi(izinli_alanlar)
     if yalnizca_izinli and izinli:
-        return [izinli]
-    return ([izinli] if izinli else []) + [a for a in YAYGIN_ALANLAR if a != izinli]
+        return izinli
+    return izinli + [a for a in YAYGIN_ALANLAR if a not in izinli]
 
 
 def alan_onerileri(metin: str, alanlar: list[str], en_fazla: int = EN_FAZLA_ONERI) -> list[str]:

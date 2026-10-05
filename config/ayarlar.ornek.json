@@ -1,5 +1,5 @@
 {
-  "tesis_kodu": "H01",
+  "tesis_kodu": "ORNEK",
   "api_url": "",
   "api_key": "",
   "gonderim_araligi_sn": 60,
@@ -9,6 +9,15 @@
   "saklama_gun": 7,
   "kayit_saklama_gun": 90,
   "gonderilince_sil": true,
-  "izin_verilen_alan_adi": "",
+  "izin_verilen_alan_adi": [],
+  "smtp": {
+    "sunucu": "",
+    "port": 587,
+    "guvenlik": "STARTTLS",
+    "kullanici": "",
+    "sifre": "",
+    "gonderen": "",
+    "varsayilan_alici": ""
+  },
   "kameralar": []
 }
