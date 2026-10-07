@@ -92,9 +92,51 @@ yanitini verir; mukerrer kayit olusmaz.
 HAZIR TEST AYARI
 ----------------
 ayarlar.test.json dosyasi, sahte kamera ve sahte M4'e isaret
-eden hazir bir ayardir (tesis kodu TEST, K1 kamerasi onayli).
-Uygulamayi hizlica calistirmak icin ana klasordeki README.txt
-icindeki "HIZLI YOL" adimlarina bakin.
+eden hazir bir ayardir (tesis kodu TEST, K1 kamerasi onayli,
+api_key = test-anahtar).
+
+Kaynak koddan uctan uca denemek icin:
+
+1) Bu klasordeki iki .bat dosyasini calistirin, pencerelerini
+   ACIK BIRAKIN:
+       1_baslat_sahte_kamera.bat
+       2_baslat_sahte_m4.bat
+
+2) ayarlar.test.json dosyasini ana klasordeki config klasorune
+   ayarlar.json adiyla kopyalayin:
+
+       araclar\ayarlar.test.json   ->   config\ayarlar.json
+
+   (Ana klasor = main.py'nin bulundugu klasor.)
+
+   DIKKAT: config\ayarlar.json zaten varsa UZERINE YAZILIR.
+   Kendi ayariniz varsa once bir kopyasini alin.
+
+3) Ana klasorde motoru baslatin:
+       python main.py
+
+4) Motor penceresinde sunlari gormelisiniz:
+       TEST | 1 kamera baslatiliyor
+       TEST/K1/Y1 | 1. kare kuyruga eklendi (21.1 KB)
+       TEST/K1/Y1 #1 | gonderildi
+
+   Sahte M4 penceresinde ise:
+       ALINDI TEST/K1/Y1 sira=1 zaman=... 21.3 KB
+
+   Arada "gonderilemedi (HTTP 503) ... tekrar" satirlari
+   gorursunuz; bu yukarida anlatilan BILEREK EKLENEN HATADIR,
+   normaldir.
+
+5) Durdurmak icin motor penceresinde Ctrl+C. Sahte kamera ve
+   sahte M4 pencerelerini de kapatin.
+
+ONEMLI: Motor, nereden baslatilirsa baslatilsin ayar dosyasini
+KENDI bulundugu klasorun altindaki config\ayarlar.json
+dosyasindan okur. Bu yuzden ayarlar.test.json'i baska bir
+klasore koymak ise yaramaz.
+
+Test sirasinda ana klasorde veri\, loglar\ ve goruntuler\
+klasorleri olusur. Bunlar teste aittir, silinebilir.
 
 Icinde gercek adres, sifre, API anahtari ya da hasta verisi
 YOKTUR; api_key degeri sahte M4'un bekledigi "test-anahtar"dir.
