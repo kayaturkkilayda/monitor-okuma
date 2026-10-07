@@ -8,6 +8,7 @@ import pytest
 
 import arka_plan
 import onay
+import sahiplik
 from veritabani import baglan
 
 SMTP = {"sunucu": "127.0.0.1", "port": 1025, "guvenlik": "Yok", "gonderen": "monitor@akgun.com.tr"}
@@ -17,7 +18,7 @@ AYARLAR = {"tesis_kodu": "H01", "api_url": "", "api_key": "", "gonderim_araligi_
 KULLANICI = {"eposta": "ayse@akgun.com.tr", "ad": "Ayşe", "yonetici": False}
 YONETICI = {"eposta": "bt@akgun.com.tr", "ad": "BT", "yonetici": True}
 KAMERA = {"kod": "K1", "yatak": "Y1", "tip": "ip", "adres": "http://10.0.0.5/shot.jpg",
-          "kullanici": "", "sifre": "", "aktif": True, "onay_eposta": "sahip@ornek.com"}
+          "kullanici": "", "sifre": "", "aktif": True}
 
 
 class HemenCalisan:
@@ -71,7 +72,8 @@ def uygulama(tk_kok):
 def ortam(uygulama, monkeypatch):
     arayuz, uyg = uygulama
     o = {"mailler": [], "kaydedilen": [], "sorulan": [], "mesajlar": [], "cevap": True, "kod": None,
-         "kamera": SahteKamera(), "form": None, "mail_hatasi": None}
+         "kamera": SahteKamera(), "form": None, "mail_hatasi": None,
+         "kod_soruldu": 0, "kod_hatalari": []}
 
     def sahte_gonder(smtp, alici, konu, metin):
         if o["mail_hatasi"]:
@@ -88,7 +90,20 @@ def ortam(uygulama, monkeypatch):
                             lambda baslik, mesaj, tur=tur, **k: o["mesajlar"].append((tur, baslik, mesaj)))
     monkeypatch.setattr(arayuz.messagebox, "askyesno",
                         lambda baslik, mesaj, **k: o["sorulan"].append(mesaj) or o["cevap"])
-    monkeypatch.setattr(arayuz.simpledialog, "askstring", lambda *a, **k: o["kod"])
+    class SahteKodPenceresi:
+        """KodPenceresi yerine: pencere açmadan o["kod"] ile doğrular."""
+
+        def __init__(self, ust, baslik, aciklama, dogrula, hata_sinifi):
+            self.sonuc = None
+            o["kod_soruldu"] += 1
+            if not o["kod"]:
+                return
+            try:
+                self.sonuc = dogrula(o["kod"])
+            except hata_sinifi as e:
+                o["kod_hatalari"].append(str(e))      # gerçekte pencerede gösterilir
+
+    monkeypatch.setattr(arayuz, "KodPenceresi", SahteKodPenceresi)
 
     class SahteForm:
         """KameraFormu yerine: pencere açmadan hazır sonucu döndürür."""
@@ -129,11 +144,12 @@ def test_eklenince_onay_maili_gider_ve_onay_bekler(ortam):
     uyg, o = ortam
     ekle(uyg, o)
     (alici, konu, metin), = o["mailler"]
-    assert alici == ["sahip@ornek.com"] and konu == "[H01] K1 → Y1 kamera kullanım onayı"
+    # Onay kodu, kamerayı ekleyen (giriş yapmış) kullanıcıya gider
+    assert alici == [KULLANICI["eposta"]] and konu == "[H01] K1 → Y1 kamera kullanım onayı"
     assert "ayse@akgun.com.tr" in metin                                  # ekleyen kullanıcı
     assert not onay.onayli_mi(uyg.ayarlar["kameralar"][0])
     assert durum_yazisi(uyg) == "Onay bekliyor (mail gönderildi)"
-    assert "onay maili gönderildi: sahip@ornek.com — ayse@akgun.com.tr" in olaylar()[-1]["mesaj"]
+    assert "onay maili gönderildi: ayse@akgun.com.tr" in olaylar()[-1]["mesaj"]
 
 
 def test_dogru_kodla_onaylanir_onaylayan_mail_adresi(ortam):
@@ -142,9 +158,10 @@ def test_dogru_kodla_onaylanir_onaylayan_mail_adresi(ortam):
     o["kod"] = mailden_kod(o["mailler"][0])
     uyg._onay_kodu_gir()
     k = uyg.ayarlar["kameralar"][0]
-    assert onay.onayli_mi(k) and k["onaylayan"] == "sahip@ornek.com"
-    assert o["kaydedilen"][-1][0]["onaylayan"] == "sahip@ornek.com"
-    assert olaylar()[-1]["mesaj"] == "K1 kullanımı onaylandı (onaylayan: sahip@ornek.com, kodu giren: ayse@akgun.com.tr)"
+    assert onay.onayli_mi(k) and k["onaylayan"] == KULLANICI["eposta"]
+    assert o["kaydedilen"][-1][0]["onaylayan"] == KULLANICI["eposta"]
+    assert olaylar()[-1]["mesaj"] == ("K1 kullanımı onaylandı (onaylayan: ayse@akgun.com.tr, "
+                                      "kodu giren: ayse@akgun.com.tr)")
     assert durum_yazisi(uyg) != "Onay bekliyor (mail gönderildi)"
 
 
@@ -155,7 +172,8 @@ def test_yanlis_kodla_onaylanmaz(ortam):
     o["kod"] = "000000" if kod != "000000" else "111111"
     uyg._onay_kodu_gir()
     assert not onay.onayli_mi(uyg.ayarlar["kameralar"][0])
-    assert o["mesajlar"][-1][0] == "showerror" and "Kalan deneme: 4" in o["mesajlar"][-1][2]
+    # Hata artık kod penceresinin içinde gösterilir, ayrı bir uyarı kutusunda değil
+    assert "Kalan deneme: 4" in o["kod_hatalari"][-1]
 
 
 def test_tekrar_gonderimde_eski_kod_gecersiz(ortam):
@@ -185,7 +203,9 @@ def test_mail_gonderilemezse_kod_silinir(ortam):
 
 def test_adres_degisince_onay_duser_ve_yeni_mail_gider(ortam):
     uyg, o = ortam
-    uyg.ayarlar["kameralar"] = [onay.onay_ver(dict(KAMERA), "sahip@ornek.com")]
+    # Kamerayı listede görebilmek için sahibi oturumdaki kullanıcı olmalı
+    uyg.ayarlar["kameralar"] = [sahiplik.sahiplendir(
+        onay.onay_ver(dict(KAMERA), "sahip@ornek.com"), KULLANICI["eposta"])]
     uyg._listeyi_doldur()
     uyg.liste.selection_set("K1")
     o["form"] = {**KAMERA, "adres": "http://10.0.0.99/shot.jpg"}
@@ -197,7 +217,9 @@ def test_adres_degisince_onay_duser_ve_yeni_mail_gider(ortam):
 
 def test_adres_ayni_kalirsa_onay_korunur_mail_gitmez(ortam):
     uyg, o = ortam
-    uyg.ayarlar["kameralar"] = [onay.onay_ver(dict(KAMERA), "sahip@ornek.com")]
+    # Kamerayı listede görebilmek için sahibi oturumdaki kullanıcı olmalı
+    uyg.ayarlar["kameralar"] = [sahiplik.sahiplendir(
+        onay.onay_ver(dict(KAMERA), "sahip@ornek.com"), KULLANICI["eposta"])]
     uyg._listeyi_doldur()
     uyg.liste.selection_set("K1")
     o["form"] = {**KAMERA, "yatak": "Y9"}
@@ -250,7 +272,9 @@ def test_onaysiz_kamerada_baglanti_testi_yapilmaz(ortam):
 
 def test_onayli_kamerada_baglanti_testi_yapilir(ortam):
     uyg, o = ortam
-    uyg.ayarlar["kameralar"] = [onay.onay_ver(dict(KAMERA), "sahip@ornek.com")]
+    # Kamerayı listede görebilmek için sahibi oturumdaki kullanıcı olmalı
+    uyg.ayarlar["kameralar"] = [sahiplik.sahiplendir(
+        onay.onay_ver(dict(KAMERA), "sahip@ornek.com"), KULLANICI["eposta"])]
     uyg._listeyi_doldur()
     uyg.liste.selection_set("K1")
     uyg._baglanti_test()
@@ -274,3 +298,114 @@ def test_onay_kodu_log_olay_ve_mesajlarda_yok(ortam):
     with baglan() as db:
         assert all(kod not in str(tuple(s)) for kod in kodlar
                    for s in db.execute("SELECT * FROM kamera_onay_kodlari"))
+
+
+# ---------- Kod penceresi kendiliğinden açılır ----------
+
+def test_mail_gidince_kod_penceresi_kendiliginden_acilir(ortam):
+    """Kullanıcı 'Onay kodunu gir' düğmesini aramak zorunda kalmaz."""
+    uyg, o = ortam
+    uyg.update()                 # önceki testlerden kalan işler bitsin
+    o["kod_soruldu"] = 0
+    ekle(uyg, o)
+    assert o["kod_soruldu"] == 1
+
+
+def test_mail_gidemezse_kod_penceresi_acilmaz(ortam):
+    uyg, o = ortam
+    uyg.update()
+    o["kod_soruldu"] = 0
+    o["mail_hatasi"] = OSError("baglanti yok")
+    ekle(uyg, o)
+    assert o["kod_soruldu"] == 0
+
+
+def test_kod_penceresi_dogru_kodda_onaylar(ortam):
+    """Pencere açılır açılmaz doğru kod girilirse kamera onaylanır."""
+    uyg, o = ortam
+    o["form"] = dict(KAMERA)
+    # Kod maili gönderilirken doğru kodu bilmek için önce mail gider, sonra pencere açılır
+    uyg._ekle()
+    uyg.update()
+    assert not onay.onayli_mi(uyg.ayarlar["kameralar"][0])
+    o["kod"] = mailden_kod(o["mailler"][0])
+    uyg.liste.selection_set(KAMERA["kod"])
+    uyg._onay_kodu_gir()
+    assert onay.onayli_mi(uyg.ayarlar["kameralar"][0])
+
+
+# ---------- Onay düğmelerinin görünürlüğü ----------
+
+def gorunen_onay_dugmeleri(uyg) -> list[str]:
+    return [d.cget("text") for d in uyg.onay_dugmeleri if d.winfo_manager()]
+
+
+def test_secim_yokken_onay_dugmeleri_gizli(ortam):
+    uyg, o = ortam
+    uyg.liste.selection_remove(*uyg.liste.selection())
+    uyg._onay_dugmelerini_guncelle()
+    assert gorunen_onay_dugmeleri(uyg) == []
+
+
+def test_onay_bekleyen_kamerada_dugmeler_gorunur(ortam):
+    uyg, o = ortam
+    ekle(uyg, o)                                   # onaysız eklenir
+    uyg._onay_dugmelerini_guncelle()
+    assert gorunen_onay_dugmeleri(uyg) == ["Onay kodunu gir", "Onay mailini tekrar gönder"]
+
+
+def test_onayli_kamerada_dugmeler_gizlenir(ortam):
+    uyg, o = ortam
+    ekle(uyg, o)
+    o["kod"] = mailden_kod(o["mailler"][0])
+    uyg._onay_kodu_gir()
+    assert onay.onayli_mi(uyg.ayarlar["kameralar"][0])
+    uyg.liste.selection_set(KAMERA["kod"])
+    uyg._onay_dugmelerini_guncelle()
+    assert gorunen_onay_dugmeleri(uyg) == []
+
+
+# ---------- Kamera görünürlüğü ve yetki ----------
+
+def test_baskasinin_kamerasi_listede_gorunmez(ortam):
+    uyg, o = ortam
+    uyg.ayarlar["kameralar"] = [sahiplik.sahiplendir(dict(KAMERA), "baska@akgun.com.tr")]
+    uyg._listeyi_doldur()
+    assert uyg.liste.get_children() == ()
+
+
+def test_kendi_kamerasi_listede_gorunur(ortam):
+    uyg, o = ortam
+    uyg.ayarlar["kameralar"] = [sahiplik.sahiplendir(dict(KAMERA), KULLANICI["eposta"])]
+    uyg._listeyi_doldur()
+    assert uyg.liste.get_children() == (KAMERA["kod"],)
+
+
+def test_baskasinin_kamerasinda_islem_reddedilir(ortam):
+    """Liste eski kalmış olsa bile düzenle/sil yetki kontrolünden geçer."""
+    uyg, o = ortam
+    uyg.ayarlar["kameralar"] = [sahiplik.sahiplendir(dict(KAMERA), "baska@akgun.com.tr")]
+    uyg._listeyi_doldur()
+    uyg.liste.insert("", "end", iid=KAMERA["kod"], values=())      # bayat satır
+    uyg.liste.selection_set(KAMERA["kod"])
+    assert uyg._secili_kamera() is None
+    assert o["mesajlar"][-1][0] == "showwarning" and "Yetki yok" in o["mesajlar"][-1][1]
+
+
+def test_yonetici_baskasinin_kamerasini_gorur(ortam):
+    uyg, o = ortam
+    uyg.oturum = dict(YONETICI)
+    try:
+        uyg.ayarlar["kameralar"] = [sahiplik.sahiplendir(dict(KAMERA), "baska@akgun.com.tr")]
+        uyg._listeyi_doldur()
+        assert uyg.liste.get_children() == (KAMERA["kod"],)
+        uyg.liste.selection_set(KAMERA["kod"])
+        assert uyg._secili_kamera() == 0
+    finally:
+        uyg.oturum = dict(KULLANICI)
+
+
+def test_eklenen_kameranin_sahibi_ekleyen_kullanicidir(ortam):
+    uyg, o = ortam
+    ekle(uyg, o)
+    assert sahiplik.sahibi(uyg.ayarlar["kameralar"][0]) == KULLANICI["eposta"]

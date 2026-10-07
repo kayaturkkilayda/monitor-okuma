@@ -38,6 +38,15 @@ def kuyruga_ekle(dosya: Path, tesis: str, kamera: str, yatak: str,
     return kayit_id
 
 
+def _hata_anahtari(neden: str, zaman: datetime) -> str:
+    """Aynı sebep, aynı kamera, aynı gün için tek mail gider.
+
+    M4 uzun süre kapalı kalırsa her görüntü için ayrı mail gitmesini engeller;
+    sorun ertesi gün de sürüyorsa yeniden hatırlatılır.
+    """
+    return f"{neden} {zaman:%Y-%m-%d}"
+
+
 def _guncelle(kayit_id: str, **alanlar):
     atamalar = ", ".join(f"{ad} = ?" for ad in alanlar)
     with baglan() as db:
@@ -60,7 +69,7 @@ def _gonder(kayit, ayarlar: dict) -> int:
     return yanit.status_code
 
 
-def _kaydi_isle(kayit_id: str, ayarlar: dict, log):
+def _kaydi_isle(kayit_id: str, ayarlar: dict, log, bildirici=None):
     """Kuyruktaki tek bir kaydı işler: gönderir, tekrar denemeye bırakır veya hatalı işaretler."""
     with baglan() as db:
         kayit = db.execute("SELECT * FROM kayitlar WHERE kayit_id = ?", (kayit_id,)).fetchone()
@@ -73,6 +82,10 @@ def _kaydi_isle(kayit_id: str, ayarlar: dict, log):
     if not Path(kayit["dosya_yolu"]).exists():
         _guncelle(kayit_id, durum="hatali", son_hata="görüntü dosyası bulunamadı")
         olay(log, "ERROR", kaynak, f"{etiket} | görüntü dosyası bulunamadı, kuyruktan çıkarıldı")
+        if bildirici:
+            bildirici.hata_olayi("gonderilemedi", kaynak,
+                                 _hata_anahtari("dosya yok", datetime.now()),
+                                 "Görüntü dosyası bulunamadı, kayıt kuyruktan çıkarıldı.")
         return
 
     # Gönderim sırasında veritabanı kilitli tutulmaz; sonuç ayrı ve tek bir güncellemeyle yazılır
@@ -92,6 +105,9 @@ def _kaydi_isle(kayit_id: str, ayarlar: dict, log):
     elif kod in KALICI_HATA:
         _guncelle(kayit_id, durum="hatali", deneme=kayit["deneme"] + 1, son_hata=neden)
         olay(log, "ERROR", kaynak, f"{etiket} | kalıcı hata ({neden}), hatalı olarak işaretlendi")
+        if bildirici:
+            bildirici.hata_olayi("m4_hata", kaynak, _hata_anahtari(neden, datetime.now()),
+                                 f"{etiket} gönderilemedi: {neden}")
     else:
         deneme = kayit["deneme"] + 1
         bekle = BEKLEME_SN[min(deneme - 1, len(BEKLEME_SN) - 1)]
@@ -111,7 +127,8 @@ def _siradakiler() -> list[str]:
     return [s["kayit_id"] for s in satirlar]
 
 
-def gonderici_dongusu(ayarlar: dict, log, dur):
+def gonderici_dongusu(ayarlar: dict, log, dur, bildirici=None):
+    """bildirici: kırmızı hatalarda sorumlu kullanıcıya mail atan nesne (yoksa yalnızca log)."""
     while not dur.is_set():
         try:
             siradakiler = _siradakiler()
@@ -123,7 +140,7 @@ def gonderici_dongusu(ayarlar: dict, log, dur):
             if dur.is_set():
                 break
             try:
-                _kaydi_isle(kayit_id, ayarlar, log)
+                _kaydi_isle(kayit_id, ayarlar, log, bildirici)
             except Exception:
                 # Tek bir kayıttaki beklenmedik hata göndericiyi durdurmasın
                 olay(log, "ERROR", "sistem", f"{kayit_id} | işlenirken beklenmeyen hata",

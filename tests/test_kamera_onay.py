@@ -134,8 +134,9 @@ def test_onay_dustuyse_mail_gerekli():
 
 
 @pytest.mark.parametrize("alan,deger,gerekli", [
-    ("yatak", "Y9", False), ("onay_eposta", "baska@ornek.com", True),
+    ("yatak", "Y9", False), ("kullanici", "baska", False),
     ("adres", "http://10.0.0.99/s.jpg", True), ("kod", "K9", True),
+    ("tip", "webcam", True),
 ])
 def test_bekleyen_kamerada_hangi_degisiklik_mail_gerektirir(alan, deger, gerekli):
     assert ko.onay_maili_gerekli_mi(KAMERA, {**KAMERA, alan: deger}) is gerekli

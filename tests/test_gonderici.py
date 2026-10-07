@@ -320,3 +320,64 @@ def test_once_hata_sonra_basari_gecmiste_iz_birakir(ortam, monkeypatch):
     g._kaydi_isle(kayit_id, AYARLAR, log)
     k = kayit(kayit_id)
     assert (k["durum"], k["deneme"], k["son_hata"]) == ("gonderildi", 1, "HTTP 503")
+
+
+# ---------- Kırmızı hatada sorumluya bildirim ----------
+
+class KayitciBildirici:
+    """hata_olayi çağrılarını kaydeder; mail göndermez."""
+
+    def __init__(self):
+        self.olaylar = []
+
+    def hata_olayi(self, tur, kamera_kodu, anahtar, ayrinti):
+        self.olaylar.append((tur, kamera_kodu, anahtar, ayrinti))
+
+
+def test_kalici_hata_sorumluya_bildirilir(ortam, monkeypatch):
+    """401 gibi kalıcı hatalar elle müdahale ister: mail kuyruğuna düşer."""
+    kayit_id, _, log, _ = ortam
+    api_cevabi(monkeypatch, kod=401)
+    bildirici = KayitciBildirici()
+    g._kaydi_isle(kayit_id, AYARLAR, log, bildirici)
+    assert kayit(kayit_id)["durum"] == "hatali"
+    (tur, kamera, anahtar, ayrinti) = bildirici.olaylar[0]
+    assert tur == "m4_hata" and kamera == "K1"
+    assert "HTTP 401" in anahtar and "HTTP 401" in ayrinti
+
+
+def test_tekrar_denenen_hata_bildirilmez(ortam, monkeypatch):
+    """503 kendi kendine tekrar denenir (sarı); kimseye mail gitmez."""
+    kayit_id, _, log, _ = ortam
+    api_cevabi(monkeypatch, kod=503)
+    bildirici = KayitciBildirici()
+    g._kaydi_isle(kayit_id, AYARLAR, log, bildirici)
+    assert kayit(kayit_id)["durum"] == "bekliyor"
+    assert bildirici.olaylar == []
+
+
+def test_goruntu_dosyasi_yoksa_bildirilir(ortam, monkeypatch):
+    kayit_id, goruntu, log, _ = ortam
+    goruntu.unlink()
+    bildirici = KayitciBildirici()
+    g._kaydi_isle(kayit_id, AYARLAR, log, bildirici)
+    assert kayit(kayit_id)["durum"] == "hatali"
+    assert bildirici.olaylar[0][0] == "gonderilemedi"
+
+
+def test_bildirici_verilmezse_gonderim_calisir(ortam, monkeypatch):
+    """Bildirici isteğe bağlıdır; yoksa hata yalnızca loglara yazılır."""
+    kayit_id, _, log, _ = ortam
+    api_cevabi(monkeypatch, kod=401)
+    g._kaydi_isle(kayit_id, AYARLAR, log)
+    assert kayit(kayit_id)["durum"] == "hatali"
+
+
+def test_ayni_sebep_ayni_gun_tek_anahtar():
+    """Aynı gün aynı sebep tek anahtar üretir: M4 kapalıyken mail yağmuru olmaz."""
+    sabah = datetime(2026, 10, 7, 8, 0, 0)
+    aksam = datetime(2026, 10, 7, 20, 0, 0)
+    ertesi = datetime(2026, 10, 8, 8, 0, 0)
+    assert g._hata_anahtari("HTTP 401", sabah) == g._hata_anahtari("HTTP 401", aksam)
+    assert g._hata_anahtari("HTTP 401", sabah) != g._hata_anahtari("HTTP 401", ertesi)
+    assert g._hata_anahtari("HTTP 401", sabah) != g._hata_anahtari("HTTP 404", sabah)

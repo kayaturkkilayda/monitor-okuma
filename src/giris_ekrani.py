@@ -10,11 +10,26 @@ import kullanicilar as ku
 import oturum
 from arka_plan import arka_planda
 from eposta_girisi import EpostaGirisi, oneri_alanlari
+from kod_girisi import KodGirisi
 from bildirim import gonder, smtp_hazir_mi
 from veritabani import olay
 
 YESIL, KIRMIZI = "#1e7e34", "#b00020"
 SMTP_YOK = "E-posta ayarları yapılmamış, yöneticinize başvurun."
+
+GRI, BAGLANTI = "#5f6b7a", "#0b5ed7"
+ALAN_GENISLIGI = 34               # karakter; etiketler alanların üstünde olduğu için tek sütun
+
+
+def stilleri_kur():
+    """Giriş ekranının kendi ttk stilleri. Tema değişse de bir kez tanımlanması yeter."""
+    stil = ttk.Style()
+    stil.configure("Giris.TButton", font=("Segoe UI", 11), padding=(0, 8))
+    stil.configure("GirisBaslik.TLabel", font=("Segoe UI", 18))
+    stil.configure("GirisAciklama.TLabel", foreground=GRI, font=("Segoe UI", 9))
+    stil.configure("GirisEtiket.TLabel", foreground=GRI, font=("Segoe UI", 9))
+    stil.configure("GirisBaglanti.TLabel", foreground=BAGLANTI,
+                   font=("Segoe UI", 9, "underline"))
 
 
 class GirisEkrani(ttk.Frame):
@@ -25,13 +40,15 @@ class GirisEkrani(ttk.Frame):
     """
 
     def __init__(self, ust, ayarlari_getir, girildi, log):
-        super().__init__(ust, padding=25)
+        super().__init__(ust, padding=(40, 32))
+        stilleri_kur()
         self.ayarlari_getir = ayarlari_getir
         self.girildi = girildi
         self.log = log
         self.eposta = ""                     # kod ekranlarında hangi hesap için çalışıldığı
         self.ekranlar, self.alanlar, self.mesajlar, self.dugmeler = {}, {}, {}, {}
         self.girisler, self.goster_kutusu = {}, {}
+        self.kod_kutulari = {}               # ekran adı → KodGirisi
         self.hatirla = tk.BooleanVar(value=True)
 
         self._ekran("ilk", "İlk yönetici hesabını oluştur",
@@ -64,49 +81,106 @@ class GirisEkrani(ttk.Frame):
     # ---------- Ekran kurulumu ----------
 
     def _ekran(self, ad, baslik, aciklama, alanlar, ana_dugme, diger_dugmeler):
+        """Tek sütunlu düzen: etiket alanın üstünde, ana düğme tam genişlikte.
+
+        Yaygın giriş ekranlarındaki gibi tek bir ana eylem öne çıkar. İkincil eylemler
+        (Kayıt ol, Şifremi unuttum) düğme değil bağlantı görünümündedir; böylece göz
+        önce "Giriş yap" düğmesine gider.
+        """
         cerceve = ttk.Frame(self)
-        ttk.Label(cerceve, text=baslik, font=("Segoe UI", 14, "bold")).grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(0, 4))
-        ttk.Label(cerceve, text=aciklama, foreground="#555555", wraplength=380).grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        cerceve.columnconfigure(0, weight=1)
+        satir = 0
+
+        ttk.Label(cerceve, text=baslik, style="GirisBaslik.TLabel").grid(
+            row=satir, column=0, sticky="w")
+        satir += 1
+        if aciklama:
+            ttk.Label(cerceve, text=aciklama, style="GirisAciklama.TLabel",
+                      wraplength=320, justify="left").grid(row=satir, column=0, sticky="w",
+                                                           pady=(6, 0))
+            satir += 1
+
         degerler, girisler = {}, {}
-        for i, (alan, etiket) in enumerate(alanlar, start=2):
-            ttk.Label(cerceve, text=etiket).grid(row=i, column=0, sticky="nw", pady=4, padx=(0, 12))
+        for alan, etiket in alanlar:
+            ttk.Label(cerceve, text=etiket, style="GirisEtiket.TLabel").grid(
+                row=satir, column=0, sticky="w", pady=(14, 3))
+            satir += 1
             deger = tk.StringVar()
             if alan == "eposta":
-                # Yazarken biçim denetimi ve @'den sonrası için alan adı önerileri
-                kutu = EpostaGirisi(cerceve, deger, lambda e=ad: self._oneri_alanlari(e))
-                kutu.grid(row=i, column=1, sticky="w", pady=4)
+                # Yazarken biçim denetimi ve @'den sonrası için satır içi alan adı tamamlama
+                kutu = EpostaGirisi(cerceve, deger, lambda e=ad: self._oneri_alanlari(e),
+                                    genislik=ALAN_GENISLIGI)
+                kutu.grid(row=satir, column=0, sticky="we")
                 giris = kutu.giris
+            elif alan == "kod":
+                # Altı ayrı kutu; son hane girilince kendiliğinden doğrular
+                kutu = KodGirisi(cerceve, tamamlandi=self._kod_tamamlandi(ad, deger, ana_dugme[1]))
+                kutu.grid(row=satir, column=0, sticky="w")
+                giris = kutu.kutular[0]
+                self.kod_kutulari[ad] = kutu
+                # Dışarıdan deger.set(...) yapılınca (ekran temizliği, testler) kutulara dağıt
+                deger.trace_add("write", self._kodu_kutulara_yaz(deger, kutu))
             else:
-                giris = ttk.Entry(cerceve, textvariable=deger, width=34,
+                giris = ttk.Entry(cerceve, textvariable=deger, width=ALAN_GENISLIGI,
                                   show="*" if alan in ("sifre", "tekrar") else "")
-                giris.grid(row=i, column=1, sticky="w", pady=4)
+                giris.grid(row=satir, column=0, sticky="we")
+            satir += 1
             giris.bind("<Return>", lambda e, f=ana_dugme[1]: f())
             degerler[alan], girisler[alan] = deger, giris
-        satir = len(alanlar) + 2
+
         if "sifre" in degerler:
             secenekler = ttk.Frame(cerceve)
-            secenekler.grid(row=satir, column=1, sticky="w")
+            secenekler.grid(row=satir, column=0, sticky="w", pady=(14, 0))
+            satir += 1
             goster = tk.BooleanVar(value=False)
             ttk.Checkbutton(secenekler, text="Şifreyi göster", variable=goster,
                             command=lambda e=ad: self._sifreyi_goster(e)).pack(side="left")
             self.goster_kutusu[ad] = goster
             if ad == "giris":
                 ttk.Checkbutton(secenekler, text="Beni hatırla", variable=self.hatirla).pack(
-                    side="left", padx=(12, 0))
+                    side="left", padx=(14, 0))
+
+        dugme = ttk.Button(cerceve, text=ana_dugme[0], command=ana_dugme[1], style="Giris.TButton")
+        dugme.grid(row=satir, column=0, sticky="we", pady=(20, 0))
+        satir += 1
+
+        if diger_dugmeler:
+            alt = ttk.Frame(cerceve)
+            alt.grid(row=satir, column=0, pady=(16, 0))      # ortalı: grid sticky verilmedi
             satir += 1
-        dugme = ttk.Button(cerceve, text=ana_dugme[0], command=ana_dugme[1])
-        dugme.grid(row=satir, column=1, sticky="w", pady=(10, 0))
-        alt = ttk.Frame(cerceve)
-        alt.grid(row=satir + 1, column=1, sticky="w", pady=(6, 0))
-        for metin, komut in diger_dugmeler:
-            ttk.Button(alt, text=metin, command=komut).pack(side="left", padx=(0, 6))
-        mesaj = ttk.Label(cerceve, text="", wraplength=380, justify="left")
-        mesaj.grid(row=satir + 2, column=0, columnspan=2, sticky="w", pady=(10, 0))
+            for i, (metin, komut) in enumerate(diger_dugmeler):
+                if i:
+                    ttk.Label(alt, text="•", foreground=GRI).pack(side="left", padx=9)
+                self._baglanti(alt, metin, komut)
+
+        mesaj = ttk.Label(cerceve, text="", wraplength=320, justify="left")
+        mesaj.grid(row=satir, column=0, sticky="w", pady=(16, 0))
         self.ekranlar[ad], self.alanlar[ad], self.mesajlar[ad], self.dugmeler[ad] = \
             cerceve, degerler, mesaj, (dugme, ana_dugme[0])
         self.girisler[ad] = girisler
+
+    @staticmethod
+    def _kodu_kutulara_yaz(deger, kutu):
+        """StringVar dışarıdan değişince kutuları eşitler; doğrulamayı tetiklemez."""
+        def guncelle(*_):
+            if kutu.kod() != deger.get():
+                kutu.yaz(deger.get(), bildir=False)
+        return guncelle
+
+    def _kod_tamamlandi(self, ekran: str, deger, eylem):
+        """Altıncı hane girilince kodu alana yazar ve doğrulamayı başlatır."""
+        def tamamlandi(kod: str):
+            deger.set(kod)
+            eylem()
+        return tamamlandi
+
+    @staticmethod
+    def _baglanti(ust, metin: str, komut):
+        """Düğme yerine bağlantı görünümlü etiket; ikincil eylem öne çıkmasın."""
+        etiket = ttk.Label(ust, text=metin, style="GirisBaglanti.TLabel", cursor="hand2")
+        etiket.pack(side="left")
+        etiket.bind("<Button-1>", lambda e: komut())
+        return etiket
 
     def _oneri_alanlari(self, ekran: str) -> list[str]:
         izinli = (self.ayarlari_getir() or {}).get("izin_verilen_alan_adi")
@@ -240,17 +314,32 @@ class GirisEkrani(ttk.Frame):
 
         self._kod_gonder("kayit", eposta, "kayit", kod, gonderildi)
 
+    def _kodu_temizle(self, ekran: str):
+        """Yanlış kodda kutuları boşaltır ve kırmızı çerçeve gösterir."""
+        self.alanlar[ekran]["kod"].set("")
+        if ekran in self.kod_kutulari:
+            self.kod_kutulari[ekran].temizle(hata=True)
+
+    def _oturum_ac(self, k: dict, neden: str):
+        """Kullanıcıyı içeri alır. "Beni hatırla" seçiliyse cihazda oturum açık kalır."""
+        if self.hatirla.get():
+            oturum.hatirla(k["id"])
+        else:
+            oturum.unut()
+        self._olay("INFO", f"Kullanıcı giriş yaptı ({neden}): {k['eposta']}"
+                           + (" (bu cihazda hatırlanacak)" if self.hatirla.get() else ""))
+        self.girildi(k)
+
     def _kayit_dogrula(self):
         try:
             k = ku.kayit_dogrula(self.eposta, self.deger("kayit_kod", "kod"))
         except ku.KullaniciHatasi as e:
-            self.alanlar["kayit_kod"]["kod"].set("")
+            self._kodu_temizle("kayit_kod")
             self.mesaj("kayit_kod", str(e), hata=True)
             return
         self._olay("INFO", f"Yeni kullanıcı kaydı tamamlandı: {k['eposta']}")
-        self.goster("giris")
-        self.alanlar["giris"]["eposta"].set(k["eposta"])
-        self.mesaj("giris", "Hesabınız açıldı. Giriş yapabilirsiniz.")
+        # E-posta kodu kimliği kanıtladı. Aynı kişiye şifresini ikinci kez sormayız.
+        self._oturum_ac(ku.girisi_kaydet(k["eposta"]), "kayıt doğrulandı")
 
     def _sifirlama_baslat(self):
         try:
@@ -271,7 +360,8 @@ class GirisEkrani(ttk.Frame):
             ku.sifre_sifirla(self.eposta, self.deger("sifirla", "kod"),
                              self.deger("sifirla", "sifre"), self.deger("sifirla", "tekrar"))
         except ku.KullaniciHatasi as e:
-            for alan in ("kod", "sifre", "tekrar"):
+            self._kodu_temizle("sifirla")
+            for alan in ("sifre", "tekrar"):
                 self.alanlar["sifirla"][alan].set("")
             self.mesaj("sifirla", str(e), hata=True)
             return

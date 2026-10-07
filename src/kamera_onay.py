@@ -113,4 +113,4 @@ def onay_maili_gerekli_mi(eski: dict | None, yeni: dict) -> bool:
         return False
     if eski is None or onayli_mi(eski):
         return True
-    return any(eski.get(a) != yeni.get(a) for a in ("kod", "adres", "tip", "onay_eposta"))
+    return any(eski.get(a) != yeni.get(a) for a in ("kod", "adres", "tip"))

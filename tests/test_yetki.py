@@ -140,10 +140,11 @@ def test_kullanicilar_listesi_ve_yonetici_yapma(tk_kok, monkeypatch):
     monkeypatch.setattr(kus.messagebox, "askyesno", lambda *a, **k: True)
     sekme = kus.KullanicilarSekmesi(tk_kok, YONETICI, LOG)
     try:
-        assert sekme.liste.item("ayse@akgun.com.tr", "values")[2] == "Kullanıcı"
+        rol = kus.SUTUNLAR.index(next(s for s in kus.SUTUNLAR if s[0] == "rol"))
+        assert sekme.liste.item("ayse@akgun.com.tr", "values")[rol] == "Kullanıcı"
         sekme.liste.selection_set("ayse@akgun.com.tr")
         sekme._yonetici_yap()
-        assert sekme.liste.item("ayse@akgun.com.tr", "values")[2] == "Yönetici"
+        assert sekme.liste.item("ayse@akgun.com.tr", "values")[rol] == "Yönetici"
         assert olaylar()[-1]["mesaj"] == "ayse@akgun.com.tr yönetici yapıldı — admin@akgun.com.tr"
         assert ku.giris("ayse@akgun.com.tr", "GizliSifre1")["yonetici"]
     finally:

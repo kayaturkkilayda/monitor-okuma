@@ -4,7 +4,7 @@ import time
 import cv2
 import numpy as np
 import requests
-from requests.auth import HTTPDigestAuth
+from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
 class Kamera:
     """Tek bir kamerayı temsil eder.
@@ -73,15 +73,34 @@ class IPKamera:
         self.kod = kod
         self.yatak = yatak
         self.url = snapshot_url
+        self.kullanici = kullanici
+        self.sifre = sifre
+        # Önce Digest denenir. Kamera Basic isterse ilk 401'de ona geçilir.
         self.auth = HTTPDigestAuth(kullanici, sifre) if kullanici else None
+        # Son denemenin sonucu; arayüz bağlantı testinde nedeni göstermek için okur
+        self.son_hata = None
+        self.son_durum_kodu = None
+
+    def _istek(self, auth):
+        return requests.get(self.url, auth=auth, timeout=self.ZAMAN_ASIMI)
 
     def _snapshot(self):
-        """Tek kare çeker. Hata olursa None döndürür."""
+        """Tek kare çeker. Hata olursa None döndürür ve nedeni son_hata'ya yazar."""
         try:
-            yanit = requests.get(self.url, auth=self.auth, timeout=self.ZAMAN_ASIMI)
+            yanit = self._istek(self.auth)
+            if yanit.status_code == 401 and self.kullanici and not isinstance(
+                    self.auth, HTTPBasicAuth):
+                # Telefon uygulamaları ve bazı IP kameralar Digest yerine Basic ister
+                basic = HTTPBasicAuth(self.kullanici, self.sifre)
+                yanit = self._istek(basic)
+                if yanit.ok:
+                    self.auth = basic           # bundan sonrası tek istekte biter
             yanit.raise_for_status()
-        except requests.RequestException:
+        except requests.RequestException as e:
+            self.son_hata = type(e).__name__
+            self.son_durum_kodu = getattr(getattr(e, "response", None), "status_code", None)
             return None
+        self.son_hata = self.son_durum_kodu = None
         veri = np.frombuffer(yanit.content, dtype=np.uint8)
         return cv2.imdecode(veri, cv2.IMREAD_COLOR)
 

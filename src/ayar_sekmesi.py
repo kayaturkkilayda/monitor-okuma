@@ -144,7 +144,8 @@ class AyarSekmesi(ttk.Frame):
         ttk.Button(self, text="Kaydet", command=self._kaydet).grid(
             row=len(SATIRLAR) + 2, column=1, sticky="w", pady=(15, 0))
 
-        self.eposta = EpostaBolumu(self, ayarlar.get("smtp"))
+        # Bildirimler, ayarları kaydeden yöneticinin adresine gider; ayrıca sorulmaz
+        self.eposta = EpostaBolumu(self, ayarlar.get("smtp"), self.oturum.get("eposta", ""))
         self.eposta.grid(row=0, column=2, rowspan=len(SATIRLAR) + 3, sticky="nw", padx=(25, 0))
 
         if not self.yonetici:

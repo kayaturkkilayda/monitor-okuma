@@ -40,6 +40,26 @@ def test_kurum_alan_adi_en_basta_ve_tekrarsiz():
     assert alanlar[0] == "gmail.com" and alanlar.count("gmail.com") == 1
 
 
+# ---------- Satır içi tamamlama (saf fonksiyon) ----------
+
+def test_tamamlama_tek_oneri_dondurur():
+    alanlar = eg.oneri_alanlari(None)
+    assert eg.tamamlama("ayse@g", alanlar) == "ayse@gmail.com"
+    assert eg.tamamlama("ayse@HO", alanlar) == "ayse@hotmail.com"
+
+
+def test_tamamlama_yoksa_none():
+    alanlar = eg.oneri_alanlari(None)
+    assert eg.tamamlama("ayse", alanlar) is None                 # @ yok
+    assert eg.tamamlama("ayse@gmail.com", alanlar) is None       # zaten tam
+    assert eg.tamamlama("ayse@zzz", alanlar) is None             # eşleşen alan adı yok
+
+
+def test_tamamlamada_kurum_alan_adi_once_gelir():
+    alanlar = eg.oneri_alanlari("akgun.com.tr")
+    assert eg.tamamlama("ayse@", alanlar) == "ayse@akgun.com.tr"
+
+
 @pytest.mark.parametrize("metin,gecerli", [
     ("ayse@akgun.com.tr", True), ("Ayse.Yilmaz@gmail.com", True), ("ayse@gmail", False),
     ("ayse", False), ("ayse@@gmail.com", False), ("ay se@gmail.com", False), ("", False)])
@@ -48,6 +68,13 @@ def test_eposta_bicimi(metin, gecerli):
 
 
 # ---------- Giriş kutusu ----------
+
+class SahteOlay:
+    """KeyRelease olayı yerine geçer; yalnızca keysym okunuyor."""
+
+    def __init__(self, keysym):
+        self.keysym = keysym
+
 
 @pytest.fixture
 def kutu(tk_kok):
@@ -60,20 +87,67 @@ def kutu(tk_kok):
     pencere.destroy()
 
 
-def test_yazarken_oneri_listesi_acilir_ve_secilir(kutu):
+def yaz(k, deger, metin: str):
+    """Kullanıcı kutuya yazmış gibi davranır: metin + imleç sonda + tamamlama."""
+    deger.set(metin)
+    k.giris.icursor("end")
+    k._tus_birakildi(SahteOlay("a"))
+
+
+def test_yazarken_kalan_alan_adi_kutuda_secili_gorunur(kutu):
+    k, deger = kutu
+    yaz(k, deger, "ayse@ak")
+    assert deger.get() == "ayse@akgun.com.tr"       # tamamlanmış hâli kutuda
+    assert k.secili_metin() == "gun.com.tr"         # yalnızca kalan kısım seçili
+
+
+def test_tamamlama_kabul_edilince_secim_kalkar(kutu):
+    k, deger = kutu
+    yaz(k, deger, "ayse@g")
+    assert k.secili_metin() == "mail.com"
+    k.kabul_et()
+    assert k.secili_metin() == ""
+    assert deger.get() == "ayse@gmail.com"          # metin aynen kalır
+
+
+def test_enter_once_tamamlamayi_kabul_eder(kutu):
+    k, deger = kutu
+    yaz(k, deger, "ayse@g")
+    assert k._kabul_tusu() == "break"               # ilk Enter formu göndermez
+    assert k.secili_metin() == ""
+    assert k._kabul_tusu() is None                  # ikinci Enter devam eder
+
+
+def test_tamamlanacak_sey_yoksa_metin_degismez(kutu):
+    k, deger = kutu
+    yaz(k, deger, "ayse")
+    assert deger.get() == "ayse"
+    assert k.secili_metin() == ""
+
+
+def test_silerken_tamamlama_yapilmaz(kutu):
     k, deger = kutu
     deger.set("ayse@ak")
-    assert k.gorunur_oneriler() == ["ayse@akgun.com.tr"]
-    k.sec(0)
-    assert deger.get() == "ayse@akgun.com.tr"
-    assert k.gorunur_oneriler() == []                                   # seçince kapanır
+    k.giris.icursor("end")
+    k._tus_birakildi(SahteOlay("BackSpace"))
+    assert deger.get() == "ayse@ak"                 # silerken araya girilmez
+    assert k.secili_metin() == ""
 
 
-def test_asagi_ok_ile_listeye_gecilir(kutu):
+def test_imlec_sonda_degilse_tamamlanmaz(kutu):
     k, deger = kutu
-    deger.set("ayse@")
-    k._listeye_gec()
-    assert k.oneriler.curselection() == (0,)
+    deger.set("ayse@ak")
+    k.giris.icursor(2)                              # kullanıcı metnin ortasını düzeltiyor
+    k.tamamla()
+    assert deger.get() == "ayse@ak"
+
+
+def test_yazmaya_devam_edince_tamamlama_yenilenir(kutu):
+    k, deger = kutu
+    yaz(k, deger, "ayse@h")
+    assert deger.get() == "ayse@hotmail.com"
+    yaz(k, deger, "ayse@y")                         # seçili kısmın yerine yeni harf
+    assert deger.get() == "ayse@yahoo.com"
 
 
 def test_gecerlilik_ipucu(kutu):

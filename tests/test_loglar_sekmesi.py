@@ -75,10 +75,21 @@ def gorunur(tk_kok, sekme):
 
 def test_renkler_seviyeden_gelir(sekme):
     satirlar = sekme.liste.get_children()
+    assert sekme.liste.item(satirlar[0], "tags") == ("INFO",)
     assert sekme.liste.item(satirlar[1], "tags") == ("WARNING",)
     assert sekme.liste.item(satirlar[2], "tags") == ("ERROR",)
+    assert str(sekme.liste.tag_configure("INFO", "background")) == "#e7f6ec"       # yeşil
     assert str(sekme.liste.tag_configure("WARNING", "background")) == "#fff3cd"    # sarı
     assert str(sekme.liste.tag_configure("ERROR", "background")) == "#f8d7da"      # kırmızı
+
+
+def test_her_seviyenin_kendi_rengi_var(sekme):
+    """Yeşil = yolunda, sarı = kendi kendine tekrar deneniyor, kırmızı = elle müdahale."""
+    assert set(ls.SEVIYE_RENGI) == {"INFO", "WARNING", "ERROR"}
+    assert len(set(ls.SEVIYE_RENGI.values())) == 3           # üç ayrı renk
+    for seviye in ls.SEVIYE_RENGI:
+        assert str(sekme.liste.tag_configure(seviye, "background")) == ls.SEVIYE_RENGI[seviye]
+        assert str(sekme.liste.tag_configure(seviye, "foreground")) == ls.SEVIYE_YAZI_RENGI[seviye]
 
 
 def test_yeni_olaylar_alta_eklenir_secim_korunur(sekme):

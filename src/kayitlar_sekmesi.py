@@ -36,9 +36,20 @@ YER_TUTUCU = "…"     # kapalı düğümün altındaki "yükleniyor" satırın�
 
 # ---------- Veri (pencereden bağımsız, test edilebilir) ----------
 
-def _kosullar(baslangic=None, bitis=None, kamera=None, durum=None, gun=None, yatak=None):
-    """Filtrelerden WHERE cümlesi ve değerleri. Tarihler "YYYY-MM-DD", ikisi de dahil."""
+def _kosullar(baslangic=None, bitis=None, kamera=None, durum=None, gun=None, yatak=None,
+              kodlar=None):
+    """Filtrelerden WHERE cümlesi ve değerleri. Tarihler "YYYY-MM-DD", ikisi de dahil.
+
+    kodlar: kullanıcının görmeye yetkili olduğu kamera kodları. None = sınır yok (yönetici).
+    Boş liste = hiç kamerası yok, hiçbir kayıt görünmez.
+    """
     kosullar, degerler = [], []
+    if kodlar is not None:
+        if not kodlar:
+            kosullar.append("0")                      # yetkili olduğu kamera yok
+        else:
+            kosullar.append(f"kamera_kodu IN ({', '.join('?' * len(kodlar))})")
+            degerler.extend(kodlar)
     if gun:
         baslangic = bitis = gun
     if baslangic:
@@ -56,9 +67,9 @@ def _kosullar(baslangic=None, bitis=None, kamera=None, durum=None, gun=None, yat
 
 def kayitlari_getir(baslangic: str | None = None, bitis: str | None = None,
                     kamera: str | None = None, durum: str | None = None,
-                    limit: int = EN_FAZLA) -> list[dict]:
+                    limit: int = EN_FAZLA, kodlar=None) -> list[dict]:
     """Düz liste: filtrelere uyan kayıtlar en yeni üstte, en çok limit tane."""
-    nerede, degerler = _kosullar(baslangic, bitis, kamera, durum)
+    nerede, degerler = _kosullar(baslangic, bitis, kamera, durum, kodlar=kodlar)
     with baglan() as db:
         satirlar = db.execute(f"SELECT * FROM kayitlar{nerede}"
                               " ORDER BY cekim_zamani DESC, sira DESC LIMIT ?",
@@ -70,35 +81,38 @@ _SAYIMLAR = ("COUNT(*) AS toplam, SUM(durum = 'gonderildi') AS gonderildi,"
              " SUM(durum = 'bekliyor') AS bekliyor, SUM(durum = 'hatali') AS hatali")
 
 
-def gun_ozetleri(baslangic=None, bitis=None, kamera=None, durum=None) -> list[dict]:
+def gun_ozetleri(baslangic=None, bitis=None, kamera=None, durum=None, kodlar=None) -> list[dict]:
     """Her gün için kayıt sayıları; en yeni gün en üstte. Sayımı SQL yapar."""
-    nerede, degerler = _kosullar(baslangic, bitis, kamera, durum)
+    nerede, degerler = _kosullar(baslangic, bitis, kamera, durum, kodlar=kodlar)
     with baglan() as db:
         return [dict(s) for s in db.execute(
             f"SELECT substr(cekim_zamani, 1, 10) AS gun, {_SAYIMLAR} FROM kayitlar{nerede}"
             " GROUP BY gun ORDER BY gun DESC", degerler)]
 
 
-def kamera_ozetleri(gun: str, kamera=None, durum=None, **_) -> list[dict]:
+def kamera_ozetleri(gun: str, kamera=None, durum=None, kodlar=None, **_) -> list[dict]:
     """Bir günün kamera/yatak bazında kayıt sayıları."""
-    nerede, degerler = _kosullar(kamera=kamera, durum=durum, gun=gun)
+    nerede, degerler = _kosullar(kamera=kamera, durum=durum, gun=gun, kodlar=kodlar)
     with baglan() as db:
         return [dict(s) for s in db.execute(
             f"SELECT kamera_kodu, yatak_kodu, {_SAYIMLAR} FROM kayitlar{nerede}"
             " GROUP BY kamera_kodu, yatak_kodu ORDER BY kamera_kodu, yatak_kodu", degerler)]
 
 
-def gun_kayitlari(gun: str, kamera: str, yatak: str, durum=None, **_) -> list[dict]:
+def gun_kayitlari(gun: str, kamera: str, yatak: str, durum=None, kodlar=None, **_) -> list[dict]:
     """Bir kameranın o günkü kayıtları, en yeni üstte (düğüm açıldığında yüklenir)."""
-    nerede, degerler = _kosullar(kamera=kamera, yatak=yatak, durum=durum, gun=gun)
+    nerede, degerler = _kosullar(kamera=kamera, yatak=yatak, durum=durum, gun=gun, kodlar=kodlar)
     with baglan() as db:
         return [dict(s) for s in db.execute(
             f"SELECT * FROM kayitlar{nerede} ORDER BY cekim_zamani DESC, sira DESC", degerler)]
 
 
-def kameralari_getir() -> list[str]:
+def kameralari_getir(kodlar=None) -> list[str]:
+    """Kayıt bırakmış kamera kodları. kodlar verilirse yalnızca izin verilenler."""
+    nerede, degerler = _kosullar(kodlar=kodlar)
     with baglan() as db:
-        return [s[0] for s in db.execute("SELECT DISTINCT kamera_kodu FROM kayitlar ORDER BY 1")]
+        return [s[0] for s in db.execute(
+            f"SELECT DISTINCT kamera_kodu FROM kayitlar{nerede} ORDER BY 1", degerler)]
 
 
 def sayi(n: int) -> str:
@@ -175,8 +189,11 @@ def kimligi_coz(iid: str) -> tuple[str, list[str]]:
 # ---------- Sekme ----------
 
 class KayitlarSekmesi(ttk.Frame):
-    def __init__(self, ust):
+    """kamera_kodlari: görülebilecek kamera kodları. None = hepsi (yönetici)."""
+
+    def __init__(self, ust, kamera_kodlari=None):
         super().__init__(ust, padding=10)
+        self.kamera_kodlari = kamera_kodlari
         self.kayitlar = {}          # kayit_id → satır; çift tıklamada kullanılır
         self.ozet_imzasi = {}       # açık kamera düğümü → son yüklenen özet (değişmediyse yeniden yüklenmez)
         self.gorunen = {}           # ağaç düğümü → ekranda yazan (metin, değerler, etiketler)
@@ -289,14 +306,15 @@ class KayitlarSekmesi(ttk.Frame):
         kamera = self.kamera.get()
         return {"baslangic": tarihler[0], "bitis": tarihler[1],
                 "kamera": None if kamera == HEPSI else kamera,
-                "durum": DURUM_SECENEKLERI.get(self.durum.get())}, uyari
+                "durum": DURUM_SECENEKLERI.get(self.durum.get()),
+                "kodlar": self.kamera_kodlari}, uyari
 
     # ---------- Yenileme ----------
 
     def yenile(self):
         filtreler, uyari = self._filtreler()
         try:
-            self.kamera_kutusu["values"] = [HEPSI, *kameralari_getir()]
+            self.kamera_kutusu["values"] = [HEPSI, *kameralari_getir(self.kamera_kodlari)]
             if self.gorunum.get() == GUNLERE_GORE:
                 metin = self._agaci_yenile(filtreler)
             else:
@@ -387,7 +405,8 @@ class KayitlarSekmesi(ttk.Frame):
         if not zorla and imza is not None and self.ozet_imzasi.get(iid) == imza:
             return
         # Gün ve kamera düğümün kendisinden gelir; filtrelerden yalnızca durum kalır
-        kayitlar = gun_kayitlari(gun, kamera, yatak, durum=self._filtre["durum"])
+        kayitlar = gun_kayitlari(gun, kamera, yatak, durum=self._filtre["durum"],
+                                 kodlar=self.kamera_kodlari)
         self.kayitlar.update({k["kayit_id"]: k for k in kayitlar})
         self._esitle(iid, [(kayit_kimligi(k["kayit_id"]), "", satir_degerleri(k), (k["durum"],), False)
                            for k in kayitlar])

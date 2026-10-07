@@ -53,8 +53,9 @@ CREATE INDEX IF NOT EXISTS ix_olaylar_zaman ON olaylar (zaman);
 CREATE TABLE IF NOT EXISTS bildirimler (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     kamera_kodu      TEXT NOT NULL,
-    tur              TEXT NOT NULL CHECK (tur IN ('ariza', 'duzeldi')),
-    ariza_baslangic  TEXT NOT NULL DEFAULT '',
+    tur              TEXT NOT NULL CHECK (tur IN ('ariza', 'duzeldi',
+                                                  'gonderilemedi', 'm4_hata')),
+    ariza_baslangic  TEXT NOT NULL DEFAULT '',   -- olayı tekilleştiren anahtar
     alicilar         TEXT NOT NULL,
     konu             TEXT NOT NULL,
     metin            TEXT NOT NULL,
@@ -121,6 +122,25 @@ def tablolari_olustur(db: sqlite3.Connection):
             db.execute(komut)
 
 
+def _bildirim_turlerini_guncelle(db: sqlite3.Connection) -> bool:
+    """Eski veritabanlarında bildirimler.tur yalnızca 'ariza' ve 'duzeldi' kabul ediyordu.
+
+    SQLite'ta CHECK kuralı değiştirilemez; tablo yeniden kurulur, satırlar taşınır.
+    Zaten yeni biçimdeyse hiçbir şey yapılmaz.
+    """
+    satir = db.execute("SELECT sql FROM sqlite_master WHERE type = 'table'"
+                       " AND name = 'bildirimler'").fetchone()
+    if satir is None or "gonderilemedi" in satir[0]:
+        return False
+    db.execute("ALTER TABLE bildirimler RENAME TO bildirimler_eski")
+    # İndeks adı tablodan bağımsızdır; eskisi silinmezse yenisi oluşturulamaz
+    db.execute("DROP INDEX IF EXISTS ix_bildirimler_durum")
+    tablolari_olustur(db)
+    db.execute("INSERT INTO bildirimler SELECT * FROM bildirimler_eski")
+    db.execute("DROP TABLE bildirimler_eski")
+    return True
+
+
 def _hazirla(db: sqlite3.Connection, anahtar: str):
     """İlk bağlantıda WAL modunu açar ve eksik tabloları oluşturur.
 
@@ -135,6 +155,7 @@ def _hazirla(db: sqlite3.Connection, anahtar: str):
         try:
             yeni = db.execute("SELECT 1 FROM sqlite_master WHERE name = 'kayitlar'").fetchone() is None
             tablolari_olustur(db)
+            _bildirim_turlerini_guncelle(db)
             if yeni:
                 db.execute(f"PRAGMA user_version = {SURUM}")
             db.commit()

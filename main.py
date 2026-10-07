@@ -12,7 +12,7 @@ sys.path.insert(0, str(KOK / "src"))
 from ayarlar import AYAR_DOSYASI, ayarlari_oku, degisen_alanlar, kameralari_olustur
 from bildirim import Bildirici
 from durum import KameraDurumu
-from gecis import eski_kuyrugu_aktar, veritabanini_guncelle
+from gecis import eski_kuyrugu_aktar, kamera_sahiplerini_ata, veritabanini_guncelle
 from gonderici import gonderici_dongusu
 from log import log_kur
 from onay import onayli_kameralar
@@ -34,7 +34,8 @@ def calistir(ayarlar: dict):
     dur, is_parcaciklari = baslat(kameralar, ayarlar, log, durum)
 
     if ayarlar["api_url"]:
-        g = threading.Thread(target=gonderici_dongusu, args=(ayarlar, log, dur),
+        # bildirici: kalıcı gönderim hatasında kamerayı onaylayan kullanıcıya mail atar
+        g = threading.Thread(target=gonderici_dongusu, args=(ayarlar, log, dur, bildirici),
                              name="gonderici", daemon=True)
         g.start()
         is_parcaciklari.append(g)
@@ -70,6 +71,7 @@ except Exception:
          ayrinti=True)
     raise
 eski_kuyrugu_aktar(log)
+kamera_sahiplerini_ata(log)      # ayarları okumadan önce: boşuna yeniden başlatma olmasın
 ayarlar = ayarlari_oku()
 bildirici = Bildirici(ayarlar, log)
 durum = KameraDurumu(log, bildirici)

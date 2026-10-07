@@ -17,6 +17,13 @@ SEVIYE_YAZISI = {"INFO": "Bilgi", "WARNING": "Uyarı", "ERROR": "Hata"}
 SUTUNLAR = [("zaman", "Zaman", 140), ("seviye", "Seviye", 60),
             ("kaynak", "Kaynak", 70), ("mesaj", "Mesaj", 600)]
 
+# Satır renkleri:
+#   yeşil  = iş yolunda gitti ya da bilgi
+#   sarı   = sorun var ama sistem kendi kendine tekrar deniyor, elin değmesin
+#   kırmızı = elle müdahale gerekiyor (kamera arızası, gönderilemeyen kayıt, kalıcı M4 hatası)
+SEVIYE_RENGI = {"INFO": "#e7f6ec", "WARNING": "#fff3cd", "ERROR": "#f8d7da"}
+SEVIYE_YAZI_RENGI = {"INFO": "#15603a", "WARNING": "#7a5800", "ERROR": "#8a1020"}
+
 
 # ---------- Veri (pencereden bağımsız, test edilebilir) ----------
 
@@ -73,8 +80,9 @@ class LoglarSekmesi(ttk.Frame):
         for ad, baslik, genislik in SUTUNLAR:
             self.liste.heading(ad, text=baslik)
             self.liste.column(ad, width=genislik, stretch=(ad == "mesaj"))
-        self.liste.tag_configure("WARNING", background="#fff3cd")
-        self.liste.tag_configure("ERROR", background="#f8d7da")
+        for seviye, arka in SEVIYE_RENGI.items():
+            self.liste.tag_configure(seviye, background=arka,
+                                     foreground=SEVIYE_YAZI_RENGI[seviye])
 
         kaydirma = ttk.Scrollbar(cerceve, orient="vertical", command=self.liste.yview)
         self.liste.configure(yscrollcommand=kaydirma.set)

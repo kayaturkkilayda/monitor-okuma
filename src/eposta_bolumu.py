@@ -1,4 +1,9 @@
-"""Ayarlar sekmesindeki "E-posta (SMTP)" bölümü."""
+"""Ayarlar sekmesindeki "E-posta (SMTP)" bölümü.
+
+Gönderen adres ayrı bir alan değildir: mailler her zaman SMTP kullanıcı adından gider.
+Varsayılan bildirim adresi de sorulmaz; ayarları kaydeden yöneticinin e-postası kullanılır.
+Böylece yönetici aynı adresi iki kez yazmaz ve yanlış gönderen adresi girilemez.
+"""
 import tkinter as tk
 from tkinter import ttk
 
@@ -14,18 +19,22 @@ ALANLAR = [
     ("guvenlik", "Güvenlik", "secim"),
     ("kullanici", "Kullanıcı adı", "metin"),
     ("sifre", "Şifre", "gizli"),
-    ("gonderen", "Gönderen adres", "metin"),
-    ("varsayilan_alici", "Varsayılan bildirim adresi", "metin"),
 ]
 
+# Formda sorulmayan ama ayar dosyasında tutulan alanlar
+TASINAN_ALANLAR = ("varsayilan_alici", "gonderen")
+
 YESIL, KIRMIZI = "#1e7e34", "#b00020"
+KULLANICI_IPUCU = "Mailler bu adresten gönderilir."
 
 
-def smtp_dogrula(d: dict) -> tuple[dict | None, str | None]:
+def smtp_dogrula(d: dict, varsayilan_alici: str = "") -> tuple[dict | None, str | None]:
     """Formdaki değerleri denetler: (smtp ayarı, None) ya da (None, hata mesajı).
 
     Sunucu boşsa e-posta kapalı sayılır; diğer alanlar yine saklanır.
+    varsayilan_alici: ayarları kaydeden yöneticinin e-postası; bildirimler buraya gider.
     """
+    eski = d
     d = {ad: str(d.get(ad, "")).strip() for ad, _, _ in ALANLAR}
     if d["guvenlik"] not in GUVENLIK_SECENEKLERI:
         d["guvenlik"] = "STARTTLS"
@@ -37,20 +46,34 @@ def smtp_dogrula(d: dict) -> tuple[dict | None, str | None]:
         return None, "SMTP portu bir tam sayı olmalı."
     if not 1 <= d["port"] <= 65535:
         return None, "SMTP portu 1 ile 65535 arasında olmalı."
+
+    # Eski ayar dosyasındaki alanlar silinmesin (geriye uyumluluk)
+    for ad in TASINAN_ALANLAR:
+        if eski.get(ad):
+            d[ad] = str(eski[ad]).strip()
+
+    alici = (varsayilan_alici or d.get("varsayilan_alici") or "").strip()
+    if alici:
+        d["varsayilan_alici"] = alici
+
     if not d["sunucu"]:
         return d, None
-    if not d["gonderen"] or gecersiz_adresler(d["gonderen"]) or "," in d["gonderen"]:
-        return None, "Gönderen adres geçerli tek bir e-posta adresi olmalı."
-    yanlis = gecersiz_adresler(d["varsayilan_alici"])
-    if yanlis:
-        return None, f"Geçersiz bildirim adresi: {', '.join(yanlis)}"
+    if not d["kullanici"]:
+        return None, "SMTP kullanıcı adı girilmeli; mailler bu adresten gönderilir."
+    if gecersiz_adresler(d["kullanici"]) or "," in d["kullanici"]:
+        return None, ("SMTP kullanıcı adı tek bir geçerli e-posta adresi olmalı; "
+                      "gönderen adres olarak kullanılır.")
     return d, None
 
 
 class EpostaBolumu(ttk.LabelFrame):
-    def __init__(self, ust, smtp: dict | None):
+    """varsayilan_alici: ayarları kaydeden yöneticinin e-postası (bildirimler oraya gider)."""
+
+    def __init__(self, ust, smtp: dict | None, varsayilan_alici: str = ""):
         super().__init__(ust, text="E-posta (SMTP)", padding=10)
         smtp = smtp or {}
+        self.varsayilan_alici = varsayilan_alici
+        self.tasinan = {ad: smtp.get(ad, "") for ad in TASINAN_ALANLAR}
         self.degerler = {}
         for i, (ad, etiket, tur) in enumerate(ALANLAR):
             ttk.Label(self, text=etiket).grid(row=i, column=0, sticky="w", pady=4, padx=(0, 10))
@@ -63,14 +86,25 @@ class EpostaBolumu(ttk.LabelFrame):
                 alan = ttk.Entry(self, textvariable=deger, width=35, show="*" if tur == "gizli" else "")
             alan.grid(row=i, column=1, sticky="w", pady=4)
             self.degerler[ad] = deger
+            if ad == "kullanici":
+                ttk.Label(self, text=KULLANICI_IPUCU, foreground="#5f6b7a",
+                          font=("Segoe UI", 8)).grid(row=i, column=2, sticky="w", padx=(8, 0))
+
+        satir = len(ALANLAR)
+        alici_yazisi = (f"Bildirimler {varsayilan_alici} adresine gider."
+                        if varsayilan_alici else "Bildirim adresi: ayarları kaydeden yönetici.")
+        ttk.Label(self, text=alici_yazisi, foreground="#5f6b7a", font=("Segoe UI", 8),
+                  wraplength=330, justify="left").grid(row=satir, column=0, columnspan=3,
+                                                       sticky="w", pady=(8, 0))
 
         self.test_dugmesi = ttk.Button(self, text="Test maili gönder", command=self._test)
-        self.test_dugmesi.grid(row=len(ALANLAR), column=1, sticky="w", pady=(10, 0))
+        self.test_dugmesi.grid(row=satir + 1, column=1, sticky="w", pady=(10, 0))
         self.sonuc = ttk.Label(self, text="", wraplength=330, justify="left")
-        self.sonuc.grid(row=len(ALANLAR) + 1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.sonuc.grid(row=satir + 2, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
     def dogrula(self):
-        return smtp_dogrula({ad: v.get() for ad, v in self.degerler.items()})
+        degerler = {ad: v.get() for ad, v in self.degerler.items()}
+        return smtp_dogrula({**self.tasinan, **degerler}, self.varsayilan_alici)
 
     def _test(self):
         """Formdaki (henüz kaydedilmemiş olabilir) ayarlarla varsayılan adrese deneme maili."""

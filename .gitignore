@@ -1,8 +1,12 @@
 .venv/
 __pycache__/
 goruntuler/
+mailler/
 loglar/
 config/ayarlar.json
+config/ayarlar.yedek.json
+config/ayarlar.*.json
+!config/ayarlar.ornek.json      # şablon; sır içermez, repoda kalır
 .env
 *.jpg
 *.png

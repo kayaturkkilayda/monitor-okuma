@@ -161,3 +161,69 @@ def test_sema_yorumlarinda_noktali_virgul_yok():
     """Şema ';' ile bölünüp komut komut çalıştırılıyor; yorumdaki ';' komutu ortadan keser."""
     import re
     assert [y for y in re.findall(r"--[^\n]*", v.SEMA) if ";" in y] == []
+
+
+# ---------- bildirimler tablosunun yeni türlere açılması ----------
+
+ESKI_BILDIRIMLER = """
+CREATE TABLE bildirimler (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    kamera_kodu      TEXT NOT NULL,
+    tur              TEXT NOT NULL CHECK (tur IN ('ariza', 'duzeldi')),
+    ariza_baslangic  TEXT NOT NULL DEFAULT '',
+    alicilar         TEXT NOT NULL,
+    konu             TEXT NOT NULL,
+    metin            TEXT NOT NULL,
+    durum            TEXT NOT NULL DEFAULT 'bekliyor'
+                     CHECK (durum IN ('bekliyor', 'gonderildi', 'vazgecildi')),
+    deneme           INTEGER NOT NULL DEFAULT 0,
+    sonraki_deneme   TEXT NOT NULL,
+    son_hata         TEXT,
+    olusturma_zamani TEXT NOT NULL,
+    gonderim_zamani  TEXT,
+    UNIQUE (kamera_kodu, tur, ariza_baslangic)
+);
+CREATE INDEX ix_bildirimler_durum ON bildirimler (durum, sonraki_deneme);
+"""
+
+ESKI_SATIR = ("K1", "ariza", "2026-10-04 10:00:00", "bt@ornek.com", "konu", "metin",
+              "2026-10-04 10:00:00", "2026-10-04 10:00:00")
+EKLE = ("INSERT INTO bildirimler (kamera_kodu, tur, ariza_baslangic, alicilar, konu, metin,"
+        " sonraki_deneme, olusturma_zamani) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+
+
+def _eski_veritabani_kur(yol: Path):
+    """Eski sürümdeki bildirimler tablosuyla bir veritabanı oluşturur."""
+    yol.parent.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(yol)
+    try:
+        db.executescript(ESKI_BILDIRIMLER)
+        db.execute(EKLE, ESKI_SATIR)
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_eski_bildirimler_tablosu_yeni_turlere_acilir(gecici_veritabani):
+    _eski_veritabani_kur(gecici_veritabani)
+    with v.baglan() as db:
+        db.execute(EKLE, ("K1", "m4_hata", "HTTP 401", "a@b.co", "k", "m",
+                          "2026-10-07 10:00:00", "2026-10-07 10:00:00"))
+    with v.baglan() as db:
+        turler = [s["tur"] for s in db.execute("SELECT tur FROM bildirimler ORDER BY id")]
+    assert turler == ["ariza", "m4_hata"]          # eski satır korundu, yenisi kabul edildi
+
+
+def test_gecis_sonrasi_indeks_yerinde(gecici_veritabani):
+    _eski_veritabani_kur(gecici_veritabani)
+    with v.baglan() as db:
+        indeksler = [s["name"] for s in db.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'bildirimler'")]
+    assert "ix_bildirimler_durum" in indeksler
+
+
+def test_gecis_tekrar_calistirilinca_bir_sey_yapmaz(gecici_veritabani):
+    """Her açılışta çalışır; zaten yeni biçimdeyse dokunmaz."""
+    _eski_veritabani_kur(gecici_veritabani)
+    with v.baglan() as db:
+        assert v._bildirim_turlerini_guncelle(db) is False   # ilk bağlantıda çevrildi

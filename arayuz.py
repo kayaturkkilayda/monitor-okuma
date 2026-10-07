@@ -5,7 +5,7 @@ import sys
 import tkinter as tk
 from datetime import datetime
 from pathlib import Path
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import messagebox, ttk
 
 import cv2
 from PIL import Image
@@ -18,6 +18,7 @@ from arka_plan import arka_planda
 from ayar_sekmesi import AyarSekmesi
 import kamera_onay
 from bildirim import gecersiz_adresler, gonder, smtp_hazir_mi
+from kod_girisi import KodPenceresi
 from kullanicilar import KullaniciHatasi
 from durum import gorunen_durum
 from giris_ekrani import GirisEkrani
@@ -27,6 +28,7 @@ from log import log_kur
 import oturum as oturum_deposu
 from loglar_sekmesi import LoglarSekmesi
 from onay import gorunen_adres, onay_ver, onayi_aktar, onayli_mi
+import sahiplik
 from onizleme import onizleme_ac
 from veritabani import olay
 from zaman import ekran_zamani
@@ -45,16 +47,95 @@ def durumlari_oku() -> dict:
         return {}
 
 
+# Kameranın kullanıcı adı/şifre istediğini gösteren HTTP kodları
+KIMLIK_KODLARI = {401: "Kamera kullanıcı adı veya şifre istiyor.",
+                  403: "Kamera bu kullanıcı adı ve şifreye izin vermiyor."}
+TEST_VARSAYILAN = "Adres, kullanıcı adı ve şifreyi kontrol edin."
+KIMLIK_ONERISI = "Kamerayı düzenleyip 'Kamera girişi' bölümünü doldurun."
+
+
+def baglanti_hata_mesaji(kamera_kodu: str, hata: str | None, durum_kodu: int | None) -> str:
+    """Bağlantı testi başarısız olunca gösterilecek metin.
+
+    Kamera kimlik istiyorsa (401/403) teknik hata yerine ne yapılacağı yazılır.
+    """
+    if durum_kodu in KIMLIK_KODLARI:
+        neden = KIMLIK_KODLARI[durum_kodu] + " " + KIMLIK_ONERISI
+    else:
+        neden = hata or TEST_VARSAYILAN
+    return f"{kamera_kodu} kamerasından görüntü alınamadı." + "\n\n" + neden
+
+
+class IpuculuGiris(ttk.Entry):
+    """Boşken soluk bir ipucu gösteren giriş kutusu.
+
+    İpucu metni ayar dosyasına yazılmaz: kutu boş bırakılırsa deger() boş metin döndürür.
+    Şifre alanında ipucu yıldızlanmasın diye gösterilirken maskeleme kapatılır.
+    """
+
+    IPUCU_RENGI = "#9aa4b1"
+
+    def __init__(self, ust, degisken: tk.StringVar, ipucu: str, gizli: bool = False, **k):
+        super().__init__(ust, textvariable=degisken, **k)
+        self.degisken = degisken
+        self.ipucu = ipucu
+        self.gizli = gizli
+        self._ipucu_acik = False
+        self._normal_renk = self.cget("foreground")
+        self.bind("<FocusIn>", self._odak_geldi)
+        self.bind("<FocusOut>", self._odak_gitti)
+        self._ipucu_goster()
+
+    def deger(self) -> str:
+        """Kullanıcının gerçekten yazdığı metin; ipucu görünüyorsa boş."""
+        return "" if self._ipucu_acik else self.degisken.get()
+
+    def _ipucu_goster(self):
+        if self.degisken.get():
+            return
+        self._ipucu_acik = True
+        self.degisken.set(self.ipucu)
+        self.config(foreground=self.IPUCU_RENGI, show="")
+
+    def _odak_geldi(self, olay=None):
+        if self._ipucu_acik:
+            self._ipucu_acik = False
+            self.degisken.set("")
+            self.config(foreground=self._normal_renk, show="*" if self.gizli else "")
+
+    def _odak_gitti(self, olay=None):
+        self._ipucu_goster()
+
+
 class KameraFormu(tk.Toplevel):
     """Kamera ekleme ve düzenleme penceresi.
 
     diger_kameralar: düzenlenen kamera hariç {kod: yatak} sözlüğü (çakışma kontrolü için)
+
+    Bildirim e-postası ve onaylayacak kişinin e-postası burada sorulmaz:
+    bildirimler Ayarlar'daki varsayılan adrese, onay kodu ise giriş yapan kullanıcıya gider.
     """
 
     ALANLAR = [("kod", "Kamera kodu"), ("yatak", "Yatak kodu"), ("adres", "Adres"),
-               ("kullanici", "Kullanıcı adı"), ("sifre", "Şifre"),
-               ("bildirim_eposta", "Bildirim e-postası\n(virgülle; boşsa varsayılan)"),
-               ("onay_eposta", "Onaylayacak kişinin\ne-postası (zorunlu)")]
+               ("kullanici", "Kullanıcı adı"), ("sifre", "Şifre")]
+
+    BILGI_ALANLARI = ("kod", "yatak", "adres")
+    GIRIS_ALANLARI = ("kullanici", "sifre")
+    IPUCU = "İsteğe bağlı"
+
+    ACIKLAMA = {
+        "kod": "Bu kameraya verdiğiniz kısa ad. Örnek: K1",
+        "yatak": "Kameranın baktığı yatak. Örnek: Y1",
+        "kullanici": ("Kameranın kendi giriş adı. Sizin hesabınız değildir. "
+                      "Kamera şifre istemiyorsa boş bırakın."),
+        "sifre": "Kameranın kendi şifresi. Şifreli saklanır.",
+    }
+    # Adres alanının anlamı kamera tipine göre değişir
+    ADRES_ACIKLAMA = {
+        "ip": "Kameranın anlık görüntü adresi. Örnek: http://192.168.1.20/shot.jpg",
+        "webcam": "Bilgisayara takılı kameranın numarası. Genelde 0.",
+    }
+    ACIKLAMA_RENGI = "#5f6b7a"
 
     def __init__(self, ust, diger_kameralar: dict, kamera: dict | None = None):
         super().__init__(ust)
@@ -70,27 +151,60 @@ class KameraFormu(tk.Toplevel):
         govde = ttk.Frame(self, padding=15)
         govde.pack(fill="both", expand=True)
 
-        ttk.Label(govde, text="Tip").grid(row=0, column=0, sticky="w", pady=4)
-        self.tip = tk.StringVar(value=k.get("tip", "ip"))
-        ttk.Combobox(govde, textvariable=self.tip, values=["ip", "webcam"],
-                     state="readonly", width=37).grid(row=0, column=1, pady=4)
+        self.degerler, self.girisler = {}, {}
 
-        self.degerler = {}
-        for i, (ad, etiket) in enumerate(self.ALANLAR, start=1):
-            ttk.Label(govde, text=etiket).grid(row=i, column=0, sticky="w", pady=4, padx=(0, 10))
-            deger = tk.StringVar(value=str(k.get(ad, "")))
-            ttk.Entry(govde, textvariable=deger, width=40,
-                      show="*" if ad == "sifre" else "").grid(row=i, column=1, pady=4)
-            self.degerler[ad] = deger
+        bilgi = ttk.LabelFrame(govde, text="Kamera bilgileri", padding=10)
+        bilgi.pack(fill="x")
+        ttk.Label(bilgi, text="Tip").grid(row=0, column=0, sticky="w", pady=(0, 2))
+        self.tip = tk.StringVar(value=k.get("tip", "ip"))
+        ttk.Combobox(bilgi, textvariable=self.tip, values=["ip", "webcam"],
+                     state="readonly", width=38).grid(row=1, column=0, sticky="we")
+        self._alanlari_ekle(bilgi, self.BILGI_ALANLARI, k, baslangic=2)
+
+        giris = ttk.LabelFrame(govde, text="Kamera girişi (isteğe bağlı)", padding=10)
+        giris.pack(fill="x", pady=(12, 0))
+        self._alanlari_ekle(giris, self.GIRIS_ALANLARI, k, baslangic=0)
 
         self.aktif = tk.BooleanVar(value=k.get("aktif", True))
-        ttk.Checkbutton(govde, text="Aktif", variable=self.aktif).grid(
-            row=len(self.ALANLAR) + 1, column=1, sticky="w", pady=4)
+        ttk.Checkbutton(govde, text="Aktif", variable=self.aktif).pack(anchor="w", pady=(12, 0))
 
         dugmeler = ttk.Frame(govde)
-        dugmeler.grid(row=len(self.ALANLAR) + 2, column=0, columnspan=2, pady=(10, 0))
+        dugmeler.pack(pady=(12, 0))
         ttk.Button(dugmeler, text="Kaydet", command=self._kaydet).pack(side="left", padx=5)
         ttk.Button(dugmeler, text="İptal", command=self.destroy).pack(side="left", padx=5)
+
+        self.tip.trace_add("write", lambda *a: self._adres_aciklamasini_guncelle())
+        self._adres_aciklamasini_guncelle()
+
+    def _alanlari_ekle(self, ust, adlar, k: dict, baslangic: int):
+        """Her alan için: etiket, kutu ve altında küçük gri açıklama."""
+        satir = baslangic
+        for ad in adlar:
+            etiket = next(e for a, e in self.ALANLAR if a == ad)
+            ttk.Label(ust, text=etiket).grid(row=satir, column=0, sticky="w", pady=(10, 2))
+            satir += 1
+            deger = tk.StringVar(value=str(k.get(ad, "")))
+            if ad in self.GIRIS_ALANLARI:
+                kutu = IpuculuGiris(ust, deger, self.IPUCU, gizli=(ad == "sifre"), width=40)
+            else:
+                kutu = ttk.Entry(ust, textvariable=deger, width=40)
+            kutu.grid(row=satir, column=0, sticky="we")
+            satir += 1
+            aciklama = ttk.Label(ust, text=self.ACIKLAMA.get(ad, ""), foreground=self.ACIKLAMA_RENGI,
+                                 font=("Segoe UI", 8), wraplength=300, justify="left")
+            aciklama.grid(row=satir, column=0, sticky="w", pady=(2, 0))
+            satir += 1
+            if ad == "adres":
+                self.adres_aciklamasi = aciklama
+            self.degerler[ad], self.girisler[ad] = deger, kutu
+
+    def _adres_aciklamasini_guncelle(self):
+        self.adres_aciklamasi.config(text=self.ADRES_ACIKLAMA.get(self.tip.get(), ""))
+
+    def _degerleri_al(self) -> dict:
+        """Formdaki değerler; ipucu görünen kutular boş sayılır."""
+        return {ad: (kutu.deger() if isinstance(kutu, IpuculuGiris) else self.degerler[ad].get()).strip()
+                for ad, kutu in self.girisler.items()}
 
     def _dogrula(self, d: dict, tip: str) -> str | None:
         if not d["kod"]:
@@ -106,15 +220,10 @@ class KameraFormu(tk.Toplevel):
             return "IP kamera adresi http:// veya https:// ile başlamalı."
         if tip == "webcam" and not d["adres"].isdigit():
             return "Webcam için adres bir sayı olmalı (genelde 0)."
-        yanlis = gecersiz_adresler(d["bildirim_eposta"])
-        if yanlis:
-            return f"Geçersiz e-posta adresi: {', '.join(yanlis)}"
-        if not d["onay_eposta"] or "," in d["onay_eposta"] or gecersiz_adresler(d["onay_eposta"]):
-            return "Onaylayacak kişinin e-postası zorunlu ve tek bir geçerli adres olmalı."
         return None
 
     def _kaydet(self):
-        d = {ad: v.get().strip() for ad, v in self.degerler.items()}
+        d = self._degerleri_al()
         tip = self.tip.get()
         hata = self._dogrula(d, tip)
         if hata:
@@ -124,12 +233,9 @@ class KameraFormu(tk.Toplevel):
             "kod": d["kod"], "yatak": d["yatak"], "tip": tip,
             "adres": int(d["adres"]) if tip == "webcam" else d["adres"],
             "kullanici": d["kullanici"], "sifre": d["sifre"],
-            "bildirim_eposta": d["bildirim_eposta"],
-            "onay_eposta": d["onay_eposta"].lower(),
             "aktif": self.aktif.get(),
         }
         self.destroy()
-
 
 class Uygulama(tk.Tk):
     def __init__(self, oturum: dict, log):
@@ -156,7 +262,8 @@ class Uygulama(tk.Tk):
         self._kamera_listesi_kur()
         self._dugmeleri_kur()
 
-        self.kayitlar_sekmesi = KayitlarSekmesi(sekmeler)
+        self.kayitlar_sekmesi = KayitlarSekmesi(
+            sekmeler, sahiplik.gorunen_kodlar(self.ayarlar["kameralar"], oturum))
         sekmeler.add(self.kayitlar_sekmesi, text="Kayıtlar")
 
         self.loglar_sekmesi = LoglarSekmesi(sekmeler)
@@ -193,6 +300,7 @@ class Uygulama(tk.Tk):
         self.liste.tag_configure("pasif", foreground="#999999")
         self.liste.pack(fill="both", expand=True)
         self.liste.bind("<Double-1>", lambda e: self._duzenle())
+        self.liste.bind("<<TreeviewSelect>>", self._onay_dugmelerini_guncelle)
 
     def _listeyi_doldur(self):
         durumlar = durumlari_oku()
@@ -202,7 +310,7 @@ class Uygulama(tk.Tk):
         secili = self.liste.selection()
 
         self.liste.delete(*self.liste.get_children())
-        for k in self.ayarlar["kameralar"]:
+        for k in sahiplik.gorunen_kameralar(self.ayarlar["kameralar"], self.oturum):
             d = durumlar.get(f"{tesis}/{k['kod']}/{k['yatak']}", {})
             durum = gorunen_durum(d, k.get("aktif", True), aralik, simdi, onayli=onayli_mi(k))
             yazi = DURUM_YAZISI.get(durum, durum)
@@ -213,6 +321,7 @@ class Uygulama(tk.Tk):
                 k["kod"], k["yatak"], k["tip"], gorunen_adres(k["adres"]), yazi, son))
 
         self.liste.selection_set([s for s in secili if self.liste.exists(s)])
+        self._onay_dugmelerini_guncelle()
 
     def _periyodik_yenile(self):
         self._listeyi_doldur()
@@ -234,19 +343,52 @@ class Uygulama(tk.Tk):
         self.test_dugmesi = ttk.Button(cerceve, text="Bağlantıyı test et",
                                        command=self._baglanti_test)
         self.test_dugmesi.pack(side="left", padx=5)
-        ttk.Button(cerceve, text="Onay kodunu gir", command=self._onay_kodu_gir).pack(side="left", padx=5)
-        ttk.Button(cerceve, text="Onay mailini tekrar gönder",
-                   command=self._onay_mailini_tekrar_gonder).pack(side="left", padx=5)
+        # Bu iki düğme yalnızca seçili kamera onay bekliyorken görünür
+        self.onay_dugmeleri = [
+            ttk.Button(cerceve, text="Onay kodunu gir", command=self._onay_kodu_gir),
+            ttk.Button(cerceve, text="Onay mailini tekrar gönder",
+                       command=self._onay_mailini_tekrar_gonder),
+        ]
+        self._onay_dugmelerini_guncelle()
+
+    def secili_kamera_kaydi(self) -> dict | None:
+        """Seçili kamera; seçim yoksa None. Uyarı göstermez."""
+        secili = self.liste.selection()
+        if not secili:
+            return None
+        return next((k for k in self.ayarlar["kameralar"] if k["kod"] == secili[0]), None)
+
+    def _onay_dugmelerini_guncelle(self, olay=None):
+        """Onaylı kamerada ve seçim yokken onay düğmeleri gizlenir."""
+        k = self.secili_kamera_kaydi()
+        goster = k is not None and not onayli_mi(k)
+        for dugme in self.onay_dugmeleri:
+            if goster:
+                dugme.pack(side="left", padx=5)
+            else:
+                dugme.pack_forget()
 
     def _diger_kameralar(self, haric: str | None = None) -> dict:
         return {k["kod"]: k["yatak"] for k in self.ayarlar["kameralar"] if k["kod"] != haric}
 
     def _secili_kamera(self) -> int | None:
+        """Seçili kameranın sırası. Düzenle, sil, test ve onay hep buradan geçer.
+
+        Yetki kontrolü burada yapılır: listede gizlemek tek başına yeterli değildir.
+        """
         secili = self.liste.selection()
         if not secili:
             messagebox.showinfo("Seçim yok", "Önce listeden bir kamera seçin.")
             return None
-        return next(i for i, k in enumerate(self.ayarlar["kameralar"]) if k["kod"] == secili[0])
+        sira = next((i for i, k in enumerate(self.ayarlar["kameralar"])
+                     if k["kod"] == secili[0]), None)
+        if sira is None:
+            return None
+        if not sahiplik.gorebilir_mi(self.ayarlar["kameralar"][sira], self.oturum):
+            messagebox.showwarning("Yetki yok", "Bu kamerayı yalnızca ekleyen kullanıcı ya da "
+                                                "bir yönetici görebilir ve değiştirebilir.")
+            return None
+        return sira
 
     # ---------- Onay ----------
 
@@ -261,29 +403,30 @@ class Uygulama(tk.Tk):
         return False
 
     def _onay_baslat(self, k: dict):
-        """Onaylayacak kişiye kodlu mail gönderir. SMTP yoksa yalnızca yönetici e-postasız onay verebilir."""
+        """Giriş yapan kullanıcıya kodlu mail gönderir.
+
+        Onayı kamerayı ekleyen kişi verir; ayrıca bir adres sorulmaz. SMTP yoksa
+        yalnızca yönetici e-postasız onay verebilir.
+        """
         smtp = self.ayarlar.get("smtp")
         if not smtp_hazir_mi(smtp):
             self._epostasiz_onay(k)
             return
-        if not k.get("onay_eposta"):
-            messagebox.showwarning("Onay e-postası yok", f"{k['kod']} için onaylayacak kişinin e-postası "
-                                   "girilmemiş. Önce kamerayı düzenleyip e-postayı girin.")
-            return
-        kod = kamera_onay.kod_olustur(k, k["onay_eposta"], self.oturum["eposta"])
+        onay_eposta = self.oturum["eposta"]
+        kod = kamera_onay.kod_olustur(k, onay_eposta, self.oturum["eposta"])
         konu, metin = kamera_onay.onay_maili(self.ayarlar.get("tesis_kodu", ""), k, self.oturum["eposta"], kod)
         del kod                                       # kod artık yalnızca mail metninde
 
         def gonderim():
             try:
-                gonder(smtp, [k["onay_eposta"]], konu, metin)
+                gonder(smtp, [onay_eposta], konu, metin)
                 return None
             except Exception as e:
                 return type(e).__name__
 
-        arka_planda(self, gonderim, lambda hata: self._onay_maili_sonucu(k, hata))
+        arka_planda(self, gonderim, lambda hata: self._onay_maili_sonucu(k, hata, onay_eposta))
 
-    def _onay_maili_sonucu(self, k: dict, hata: str | None):
+    def _onay_maili_sonucu(self, k: dict, hata: str | None, onay_eposta: str):
         if hata:
             kamera_onay.kodu_sil(k["kod"])            # gitmeyen kod geçerli kalmasın
             olay(self.log, "WARNING", k["kod"],
@@ -293,11 +436,15 @@ class Uygulama(tk.Tk):
                                  "E-posta ayarlarını kontrol edip 'Onay mailini tekrar gönder' ile deneyin.")
         else:
             olay(self.log, "INFO", k["kod"],
-                 f"{k['kod']} onay maili gönderildi: {k['onay_eposta']} — {self.oturum['eposta']}")
+                 f"{k['kod']} onay maili gönderildi: {onay_eposta}")
             messagebox.showinfo("Onay maili gönderildi",
-                                f"{k['kod']} için onay kodu {k['onay_eposta']} adresine gönderildi.\n\n"
-                                "Kod gelince 'Onay kodunu gir' ile girin. Onaylanana kadar kameradan "
+                                f"{k['kod']} için onay kodu {onay_eposta} adresine gönderildi.\n\n"
+                                "Kod gelince aşağıdaki kutulara girin. Onaylanana kadar kameradan "
                                 "görüntü alınmaz.")
+            self._listeyi_doldur()
+            # Kullanıcı düğme aramasın: kod penceresi kendiliğinden açılır
+            self._onay_kodu_gir(k)
+            return
         self._listeyi_doldur()
 
     def _epostasiz_onay(self, k: dict):
@@ -320,34 +467,46 @@ class Uygulama(tk.Tk):
              f"[E-POSTASIZ ONAY] {k['kod']} kullanımı e-posta kodu olmadan onaylandı — {self.oturum['eposta']}")
         self._listeyi_doldur()
 
-    def _onay_kodu_gir(self):
-        sira = self._secili_kamera()
-        if sira is None:
+    def _onay_kodu_gir(self, kamera: dict | None = None):
+        """Altı kutulu kod penceresini açar.
+
+        kamera verilirse (mail gönderildikten hemen sonra) listeden seçim beklenmez.
+        """
+        if kamera is None:
+            sira = self._secili_kamera()
+            if sira is None:
+                return
+            kamera = self.ayarlar["kameralar"][sira]
+        if self._zaten_onayli(kamera):
             return
-        k = self.ayarlar["kameralar"][sira]
-        if self._zaten_onayli(k):
-            return
-        if not kamera_onay.bekleyen_kod(k):
-            messagebox.showinfo("Kod yok", f"{k['kod']} için gönderilmiş geçerli bir onay kodu yok.\n\n"
+        if not kamera_onay.bekleyen_kod(kamera):
+            messagebox.showinfo("Kod yok", f"{kamera['kod']} için gönderilmiş geçerli bir onay "
+                                           "kodu yok." + chr(10) + chr(10) +
                                            "'Onay mailini tekrar gönder' ile yeni kod gönderin.")
             return
-        kod = simpledialog.askstring("Onay kodu", f"{k['kod']} → {k['yatak']} için e-postayla gelen "
-                                                  "6 haneli onay kodunu girin:", parent=self)
-        if not kod:
+
+        pencere = KodPenceresi(
+            self, "Onay kodu",
+            f"{kamera['kod']} → {kamera['yatak']} için e-postanıza gelen 6 haneli onay kodunu girin.",
+            lambda kod: kamera_onay.kodu_dogrula(kamera, kod), KullaniciHatasi)
+        self.wait_window(pencere)
+        if pencere.sonuc is None:
+            self._listeyi_doldur()                 # deneme hakkı azalmış olabilir
             return
-        try:
-            onaylayan = kamera_onay.kodu_dogrula(k, kod)
-        except KullaniciHatasi as e:
-            messagebox.showerror("Onaylanamadı", str(e), parent=self)
-            self._listeyi_doldur()
-            return
-        self.ayarlar["kameralar"][sira] = onay_ver(k, onaylayan)
+        self._onayi_isle(kamera, pencere.sonuc)
+
+    def _onayi_isle(self, kamera: dict, onaylayan: str):
+        sira = self._sira(kamera["kod"])
+        self.ayarlar["kameralar"][sira] = onay_ver(kamera, onaylayan)
         ayarlari_yaz(self.ayarlar)
-        olay(self.log, "INFO", k["kod"], f"{k['kod']} kullanımı onaylandı (onaylayan: {onaylayan}, "
-                                         f"kodu giren: {self.oturum['eposta']})")
+        olay(self.log, "INFO", kamera["kod"],
+             f"{kamera['kod']} kullanımı onaylandı (onaylayan: {onaylayan}, "
+             f"kodu giren: {self.oturum['eposta']})")
         self._listeyi_doldur()
-        messagebox.showinfo("Onaylandı", f"{k['kod']} kamerası {onaylayan} onayıyla kullanıma açıldı.\n\n"
-                                         "Motor çalışıyorsa birkaç saniye içinde çekime başlar.")
+        messagebox.showinfo("Onaylandı",
+                            f"{kamera['kod']} kamerası {onaylayan} onayıyla kullanıma açıldı." +
+                            chr(10) + chr(10) +
+                            "Motor çalışıyorsa birkaç saniye içinde çekime başlar.")
 
     def _onay_mailini_tekrar_gonder(self):
         sira = self._secili_kamera()
@@ -364,7 +523,8 @@ class Uygulama(tk.Tk):
         form = KameraFormu(self, self._diger_kameralar())
         self.wait_window(form)
         if form.sonuc:
-            k = form.sonuc                            # onaysız eklenir; onay e-posta koduyla gelir
+            # Onaysız eklenir; onay e-posta koduyla gelir. Ekleyen kullanıcı sahibidir.
+            k = sahiplik.sahiplendir(form.sonuc, self.oturum["eposta"])
             self.ayarlar["kameralar"].append(k)
             self._kaydet_ve_bildir(f"{k['kod']} eklendi", k["kod"], bilgi=False)
             self._onay_baslat(k)
@@ -378,6 +538,7 @@ class Uygulama(tk.Tk):
         self.wait_window(form)
         if form.sonuc:
             k = onayi_aktar(eski, form.sonuc)         # adres ya da tip değiştiyse onay düşer
+            k = sahiplik.sahiplendir(k, sahiplik.sahibi(eski) or self.oturum["eposta"])
             if k["kod"] != eski["kod"]:
                 kamera_onay.kodu_sil(eski["kod"])
             self.ayarlar["kameralar"][sira] = k
@@ -425,19 +586,18 @@ class Uygulama(tk.Tk):
         def cekim():
             try:
                 kare, *_ = kamera.cift_cekim(aralik_sn=0)
-                return kare, None
+                return kare, None, getattr(kamera, "son_durum_kodu", None)
             except Exception as e:
-                return None, str(e)
+                return None, str(e), None
 
-        arka_planda(self, cekim, lambda sonuc: self._test_sonucu(k, *(sonuc or (None, None))))
+        arka_planda(self, cekim,
+                    lambda sonuc: self._test_sonucu(k, *(sonuc or (None, None, None))))
 
-    def _test_sonucu(self, k: dict, kare, hata: str | None):
+    def _test_sonucu(self, k: dict, kare, hata: str | None, durum_kodu: int | None = None):
         self.test_dugmesi.config(state="normal", text="Bağlantıyı test et")
         if kare is None:
-            messagebox.showerror(
-                "Bağlantı başarısız",
-                f"{k['kod']} kamerasından görüntü alınamadı.\n\n"
-                f"{hata or 'Adres, kullanıcı adı ve şifreyi kontrol edin.'}")
+            messagebox.showerror("Bağlantı başarısız",
+                                 baglanti_hata_mesaji(k["kod"], hata, durum_kodu), parent=self)
             return
 
         goruntu = Image.fromarray(cv2.cvtColor(kare, cv2.COLOR_BGR2RGB))

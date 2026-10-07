@@ -17,7 +17,6 @@
     "guvenlik": "STARTTLS",
     "kullanici": "",
     "sifre": "",
-    "gonderen": "",
     "varsayilan_alici": ""
   },
   "kameralar": [
@@ -28,8 +27,6 @@
       "adres": "http://127.0.0.1:8080/K1/shot.jpg",
       "kullanici": "",
       "sifre": "",
-      "bildirim_eposta": "",
-      "onay_eposta": "test@ornek.com",
       "aktif": true,
       "onay_zamani": "2026-01-01 00:00:00",
       "onaylayan": "test (hazir demo ayari)"

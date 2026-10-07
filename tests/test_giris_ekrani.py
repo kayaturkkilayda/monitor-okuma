@@ -183,9 +183,7 @@ def test_kayit_akisi_kod_yalnizca_e_postada(ortam):
 
     doldur(ekran, "kayit_kod", kod=kod)
     ekran._kayit_dogrula()
-    assert ekran.aktif == "giris" and "Hesabınız açıldı" in mesaj(ekran, "giris")
-    doldur(ekran, "giris", sifre="GizliSifre1")
-    ekran._giris()
+    # Doğrulamadan sonra kullanıcı doğrudan içeri alınır; şifre ikinci kez sorulmaz
     assert girenler[0]["eposta"] == "ayse@akgun.com.tr" and not girenler[0]["yonetici"]
 
 
@@ -281,3 +279,134 @@ def test_sifre_alanlari_gizli(ortam):
     for ad, girisler in ekran.girisler.items():
         for alan, giris in girisler.items():
             assert (giris.cget("show") == "*") == (alan in ("sifre", "tekrar")), (ad, alan)
+
+
+# ---------- Ekran düzeni ----------
+
+def test_ana_dugme_tam_genislikte_ve_vurgulu(ortam):
+    """Giriş yap tek ana eylemdir: tam genişlikte ve kendi stilinde."""
+    kur, *_ = ortam
+    ekran = kur()
+    dugme = ekran.dugmeler["giris"][0]
+    assert str(dugme.cget("style")) == "Giris.TButton"
+    assert dugme.grid_info()["sticky"] == "ew"     # Tk "we" yerine "ew" yazar
+    assert dugme.cget("text") == "Giriş yap"
+
+
+def test_ikincil_eylemler_baglanti_gorunumunde(ortam):
+    """Kayıt ol ve Şifremi unuttum düğme değil, bağlantı görünümlü etikettir."""
+    from tkinter import ttk
+
+    kur, *_ = ortam
+    ekran = kur()
+    etiketler = [c for c in ekran.ekranlar["giris"].winfo_children()
+                 if isinstance(c, ttk.Frame)]
+    baglantilar = [t for cerceve in etiketler for t in cerceve.winfo_children()
+                   if isinstance(t, ttk.Label) and str(t.cget("style")) == "GirisBaglanti.TLabel"]
+    metinler = sorted(t.cget("text") for t in baglantilar)
+    assert metinler == ["Kayıt ol", "Şifremi unuttum"]
+    assert all(not isinstance(t, ttk.Button) for t in baglantilar)
+
+
+def test_baglantiya_tiklayinca_ekran_degisir(ortam):
+    """Bağlantı etiketi tıklanınca düğme gibi çalışır."""
+    kur, *_ = ortam
+    ekran = kur()
+    hedef = {}
+    etiket = ekran._baglanti(ekran, "Deneme", lambda: hedef.setdefault("tiklandi", True))
+    etiket.event_generate("<Button-1>")
+    ekran.update()
+    assert hedef.get("tiklandi") is True
+
+
+def test_etiketler_alanlarin_ustunde(ortam):
+    """Tek sütunlu düzen: her alan 0. sütunda, etiketi bir üst satırda."""
+    kur, *_ = ortam
+    ekran = kur()
+    for alan, giris in ekran.girisler["giris"].items():
+        # EpostaGirisi kendi çerçevesindedir; onun çerçevesi de 0. sütunda olmalı
+        kutu = giris if giris.grid_info() else giris.master
+        assert kutu.grid_info()["column"] == 0, alan
+
+
+# ---------- Doğrulamadan sonra otomatik giriş ----------
+
+def test_dogrulamadan_sonra_dogrudan_iceri_alinir(ortam):
+    kur, mailler, girenler, _, _ = ortam
+    yonetici_var()
+    ekran = kur()
+    ekran.goster("kayit")
+    doldur(ekran, "kayit", eposta="ayse@akgun.com.tr", ad="Ayşe",
+           sifre="GizliSifre1", tekrar="GizliSifre1")
+    ekran._kayit()
+    ekran.update()
+    doldur(ekran, "kayit_kod", kod=koddan(mailler[0]))
+    ekran._kayit_dogrula()
+    assert len(girenler) == 1
+    assert girenler[0]["eposta"] == "ayse@akgun.com.tr"
+    assert girenler[0]["son_giris"]                       # giriş zamanı yazıldı
+
+
+def test_beni_hatirla_secimine_uyulur(ortam):
+    import oturum as od
+
+    kur, mailler, girenler, _, _ = ortam
+    yonetici_var()
+    ekran = kur()
+    ekran.hatirla.set(False)
+    ekran.goster("kayit")
+    doldur(ekran, "kayit", eposta="ayse@akgun.com.tr", ad="Ayşe",
+           sifre="GizliSifre1", tekrar="GizliSifre1")
+    ekran._kayit()
+    ekran.update()
+    doldur(ekran, "kayit_kod", kod=koddan(mailler[0]))
+    ekran._kayit_dogrula()
+    assert girenler and od.hatirlanan_kullanici() is None   # cihazda oturum bırakılmadı
+
+
+# ---------- Altı kutulu kod girişi ----------
+
+def test_dogrulama_ekraninda_alti_kutu_var(ortam):
+    import kod_girisi as kg
+
+    kur, *_ = ortam
+    ekran = kur()
+    for ad in ("kayit_kod", "sifirla"):
+        assert ad in ekran.kod_kutulari
+        assert isinstance(ekran.kod_kutulari[ad], kg.KodGirisi)
+        assert len(ekran.kod_kutulari[ad].kutular) == 6
+
+
+def test_kutulara_yazilan_kod_alana_gecer(ortam):
+    kur, *_ = ortam
+    ekran = kur()
+    ekran.kod_kutulari["sifirla"].yaz("123456", bildir=False)
+    assert ekran.kod_kutulari["sifirla"].kod() == "123456"
+
+
+def test_alandan_gelen_kod_kutulara_dagilir(ortam):
+    kur, *_ = ortam
+    ekran = kur()
+    ekran.alanlar["sifirla"]["kod"].set("654321")
+    assert ekran.kod_kutulari["sifirla"].kod() == "654321"
+    ekran.alanlar["sifirla"]["kod"].set("")
+    assert ekran.kod_kutulari["sifirla"].kod() == ""
+
+
+def test_yanlis_kodda_kutular_kirmizi_ve_bos(ortam):
+    import kod_girisi as kg
+
+    kur, mailler, _, _, _ = ortam
+    yonetici_var()
+    ekran = kur()
+    ekran.goster("kayit")
+    doldur(ekran, "kayit", eposta="ayse@akgun.com.tr", ad="Ayşe",
+           sifre="GizliSifre1", tekrar="GizliSifre1")
+    ekran._kayit()
+    ekran.update()
+    dogru = koddan(mailler[0])
+    doldur(ekran, "kayit_kod", kod="000000" if dogru != "000000" else "111111")
+    ekran._kayit_dogrula()
+    kutu = ekran.kod_kutulari["kayit_kod"]
+    assert kutu.kod() == ""
+    assert str(kutu.kutular[0].cget("highlightbackground")) == kg.HATA_KENAR

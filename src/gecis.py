@@ -10,6 +10,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import sahiplik
+from ayarlar import ayarlari_oku, ayarlari_yaz
 from kimlik import benzersiz, cift_tabani, kayit_tabani
 from veritabani import SURUM, baglan, olay, tablolari_olustur
 from zaman import db_zamani, fark_metni, saat_dilimi
@@ -223,3 +225,41 @@ def eski_kuyrugu_aktar(log) -> int:
     if aktarilan:
         olay(log, "INFO", "sistem", f"Eski kuyruktan {aktarilan} kayıt veritabanına aktarıldı")
     return aktarilan
+
+
+# ---------- 3. Kamera sahipleri ----------
+
+def _ilk_yonetici() -> str | None:
+    """En eski yönetici hesabının e-postası; hiç yoksa None."""
+    with baglan() as db:
+        satir = db.execute("SELECT eposta FROM kullanicilar WHERE yonetici = 1"
+                           " ORDER BY id LIMIT 1").fetchone()
+    return satir["eposta"] if satir else None
+
+
+def kamera_sahiplerini_ata(log) -> int:
+    """Sahibi yazılmamış kameraları ilk yöneticiye verir; atanan kamera sayısını döndürür.
+
+    Eski ayar dosyalarında "ekleyen" alanı yoktur. Sahipsiz kamerayı normal kullanıcı
+    zaten göremez; bu geçiş onları açıkça yöneticiye bağlar. Henüz yönetici hesabı yoksa
+    hiçbir şey yapılmaz; bir sonraki açılışta tekrar denenir.
+
+    Şifreler makine kapsamlı DPAPI ile saklandığı için motor başka bir hesapta çalışsa
+    bile ayar dosyasını güvenle yeniden yazabilir.
+    """
+    try:
+        ayarlar = ayarlari_oku()
+    except Exception:
+        return 0
+    sahipsiz = [k for k in (ayarlar.get("kameralar") or []) if not sahiplik.sahibi(k)]
+    if not sahipsiz:
+        return 0
+    yonetici = _ilk_yonetici()
+    if not yonetici:
+        return 0
+    for k in sahipsiz:
+        k[sahiplik.SAHIP_ALANI] = yonetici
+    ayarlari_yaz(ayarlar)
+    olay(log, "INFO", "sistem",
+         f"{len(sahipsiz)} kameranın sahibi yöneticiye atandı: {yonetici}")
+    return len(sahipsiz)

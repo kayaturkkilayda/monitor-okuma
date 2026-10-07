@@ -273,6 +273,23 @@ def giris(eposta: str, sifre: str, simdi: datetime | None = None) -> dict:
         return _kullanici(db.execute("SELECT * FROM kullanicilar WHERE id = ?", (satir["id"],)).fetchone())
 
 
+def girisi_kaydet(eposta: str, simdi: datetime | None = None) -> dict:
+    """Şifre sorulmadan oturum açıldığında son giriş zamanını yazar.
+
+    Kayıt doğrulamasında kullanılır: kullanıcı e-postasına gelen kodu girdi, kimliği
+    kanıtlandı. Aynı şifreyi ikinci kez sormak gereksizdir.
+    """
+    simdi = simdi or datetime.now()
+    eposta = eposta_normallestir(eposta)
+    with baglan() as db:
+        db.execute("UPDATE kullanicilar SET hatali_deneme = 0, kilit_bitis = NULL, son_giris = ?"
+                   " WHERE eposta = ?", (db_zamani(simdi), eposta))
+        k = _kullanici(db.execute("SELECT * FROM kullanicilar WHERE eposta = ?", (eposta,)).fetchone())
+    if k is None:
+        raise KullaniciHatasi("Hesap bulunamadı.")
+    return k
+
+
 # ---------- Şifre sıfırlama ----------
 
 def sifirlama_baslat(eposta: str, simdi: datetime | None = None) -> tuple[str, str | None]:

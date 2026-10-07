@@ -6,7 +6,8 @@ import kullanicilar as ku
 from veritabani import olay
 from zaman import db_zamani, ekran_zamani
 
-SUTUNLAR = [("eposta", "E-posta", 220), ("ad", "Ad", 160), ("rol", "Rol", 90),
+# Önce kişiyi tanıtan bilgiler (Ad, Rol), sonra kimlik ve durum
+SUTUNLAR = [("ad", "Ad", 160), ("rol", "Rol", 90), ("eposta", "E-posta", 220),
             ("durum", "Durum", 120), ("son", "Son giriş", 140)]
 
 
@@ -17,7 +18,7 @@ def satir_degerleri(k: dict, simdi: str) -> tuple:
         durum = "Kilitli"
     else:
         durum = "Aktif"
-    return (k["eposta"], k["ad"], "Yönetici" if k["yonetici"] else "Kullanıcı", durum,
+    return (k["ad"], "Yönetici" if k["yonetici"] else "Kullanıcı", k["eposta"], durum,
             ekran_zamani(k["son_giris"]))
 
 
