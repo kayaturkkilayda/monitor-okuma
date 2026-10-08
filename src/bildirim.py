@@ -92,14 +92,18 @@ def kamera_mesaji(tur: str, tesis: str, kamera: dict, ariza_baslangic: str | Non
 # Kırmızı (elle müdahale gereken) hatalar için ne yapılacağı
 NE_YAPMALI = {
     "ariza": ("Kameranın elektriğini ve ağ bağlantısını kontrol edin. Kamera görüntü\n"
-              "vermeye başlayana kadar bu yataktan M4'e görüntü gitmeyecek; değerleri\n"
-              "M4'e elle girin."),
+              "vermeye başlayana kadar bu yataktan M4'e görüntü gitmeyecek. Bu sürede\n"
+              "değerleri M4'e elle girin VEYA yatak başındaki QR'ı telefonunuzla okutup\n"
+              "monitörün fotoğrafını gönderin."),
     "gonderilemedi": ("Görüntü çekildi ama M4'e gönderilemedi ve tekrar denemeler bitti.\n"
-                      "Bu görüntü kendiliğinden gitmeyecek. Değeri M4'e elle girin.\n"
+                      "Bu görüntü kendiliğinden gitmeyecek. Değeri M4'e elle girin VEYA\n"
+                      "yatak başındaki QR'ı okutup telefonla yeni bir fotoğraf gönderin.\n"
                       "Sorun sürüyorsa BT ile M4 bağlantısını kontrol edin."),
     "m4_hata": ("M4 isteği kalıcı olarak reddetti. Bu genellikle yanlış API adresi ya da\n"
                 "API anahtarı demektir. Arayüzdeki Ayarlar sekmesinden M4 bilgilerini\n"
-                "kontrol edin. Düzelene kadar değerleri M4'e elle girin."),
+                "kontrol edin. Düzelene kadar değerleri M4'e elle girin.\n"
+                "(Telefonla gönderilen fotoğraflar da aynı kuyruğa girer; M4 düzelene\n"
+                "kadar onlar da bekler.)"),
 }
 
 HATA_BASLIGI = {"gonderilemedi": "görüntü gönderilemedi", "m4_hata": "M4 kalıcı hata"}

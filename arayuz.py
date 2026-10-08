@@ -30,6 +30,8 @@ from loglar_sekmesi import LoglarSekmesi
 from onay import gorunen_adres, onay_ver, onayi_aktar, onayli_mi
 import sahiplik
 from onizleme import onizleme_ac
+from qr_penceresi import QrPenceresi
+from telefon_sunucusu import sunucu_ayari
 from veritabani import olay
 from zaman import ekran_zamani
 
@@ -343,6 +345,7 @@ class Uygulama(tk.Tk):
         self.test_dugmesi = ttk.Button(cerceve, text="Bağlantıyı test et",
                                        command=self._baglanti_test)
         self.test_dugmesi.pack(side="left", padx=5)
+        ttk.Button(cerceve, text="QR göster", command=self._qr_goster).pack(side="left", padx=5)
         # Bu iki düğme yalnızca seçili kamera onay bekliyorken görünür
         self.onay_dugmeleri = [
             ttk.Button(cerceve, text="Onay kodunu gir", command=self._onay_kodu_gir),
@@ -367,6 +370,14 @@ class Uygulama(tk.Tk):
                 dugme.pack(side="left", padx=5)
             else:
                 dugme.pack_forget()
+
+    def _qr_goster(self):
+        """Seçili yatağın QR'ını gösterir; yazdırılıp yatak başına asılabilir."""
+        sira = self._secili_kamera()
+        if sira is None:
+            return
+        ayar = sunucu_ayari(self.ayarlar)
+        QrPenceresi(self, self.ayarlar["kameralar"][sira], ayar["port"], ayar["acik"])
 
     def _diger_kameralar(self, haric: str | None = None) -> dict:
         return {k["kod"]: k["yatak"] for k in self.ayarlar["kameralar"] if k["kod"] != haric}

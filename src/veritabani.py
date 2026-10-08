@@ -35,7 +35,10 @@ CREATE TABLE IF NOT EXISTS kayitlar (
     deneme          INTEGER NOT NULL DEFAULT 0,
     sonraki_deneme  TEXT NOT NULL,
     son_hata        TEXT,
-    gonderim_zamani TEXT
+    gonderim_zamani TEXT,
+    kaynak          TEXT NOT NULL DEFAULT 'kamera'    -- 'kamera' ya da 'telefon'
+                    CHECK (kaynak IN ('kamera', 'telefon')),
+    yukleyen        TEXT                              -- telefondan yükleyen kullanıcı
 );
 CREATE INDEX IF NOT EXISTS ix_kayitlar_durum ON kayitlar (durum, sonraki_deneme);
 CREATE INDEX IF NOT EXISTS ix_kayitlar_cift ON kayitlar (cift_id);
@@ -122,6 +125,23 @@ def tablolari_olustur(db: sqlite3.Connection):
             db.execute(komut)
 
 
+def _kayit_sutunlarini_guncelle(db: sqlite3.Connection) -> bool:
+    """Eski veritabanlarına kaynak ve yukleyen sütunlarını ekler.
+
+    SQLite ALTER TABLE ADD COLUMN destekler; tabloyu yeniden kurmaya gerek yoktur.
+    Var olan kayıtlar 'kamera' kaynağıyla kalır.
+    """
+    sutunlar = {s["name"] for s in db.execute("PRAGMA table_info(kayitlar)")}
+    eklendi = False
+    if "kaynak" not in sutunlar:
+        db.execute("ALTER TABLE kayitlar ADD COLUMN kaynak TEXT NOT NULL DEFAULT 'kamera'")
+        eklendi = True
+    if "yukleyen" not in sutunlar:
+        db.execute("ALTER TABLE kayitlar ADD COLUMN yukleyen TEXT")
+        eklendi = True
+    return eklendi
+
+
 def _bildirim_turlerini_guncelle(db: sqlite3.Connection) -> bool:
     """Eski veritabanlarında bildirimler.tur yalnızca 'ariza' ve 'duzeldi' kabul ediyordu.
 
@@ -156,6 +176,7 @@ def _hazirla(db: sqlite3.Connection, anahtar: str):
             yeni = db.execute("SELECT 1 FROM sqlite_master WHERE name = 'kayitlar'").fetchone() is None
             tablolari_olustur(db)
             _bildirim_turlerini_guncelle(db)
+            _kayit_sutunlarini_guncelle(db)
             if yeni:
                 db.execute(f"PRAGMA user_version = {SURUM}")
             db.commit()

@@ -39,7 +39,8 @@ def test_kayitlar_tablosunun_sutunlari():
         sutunlar = [s["name"] for s in db.execute("PRAGMA table_info(kayitlar)")]
     assert sutunlar == ["kayit_id", "cift_id", "tesis_kodu", "kamera_kodu", "yatak_kodu",
                         "cekim_zamani", "saat_dilimi", "sira", "dosya_yolu", "dosya_boyutu",
-                        "durum", "deneme", "sonraki_deneme", "son_hata", "gonderim_zamani"]
+                        "durum", "deneme", "sonraki_deneme", "son_hata", "gonderim_zamani",
+                        "kaynak", "yukleyen"]
 
 
 def test_yeni_veritabani_son_surumle_baslar():
@@ -227,3 +228,36 @@ def test_gecis_tekrar_calistirilinca_bir_sey_yapmaz(gecici_veritabani):
     _eski_veritabani_kur(gecici_veritabani)
     with v.baglan() as db:
         assert v._bildirim_turlerini_guncelle(db) is False   # ilk bağlantıda çevrildi
+
+
+# ---------- kaynak / yukleyen sütunları ----------
+
+def test_eski_kayitlar_tablosuna_sutunlar_eklenir(gecici_veritabani):
+    """ALTER TABLE ile eklenir; var olan kayıtlar 'kamera' kaynağıyla kalır."""
+    gecici_veritabani.parent.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(gecici_veritabani)
+    try:
+        db.executescript("""
+            CREATE TABLE kayitlar (
+                kayit_id TEXT PRIMARY KEY, cift_id TEXT NOT NULL, tesis_kodu TEXT NOT NULL,
+                kamera_kodu TEXT NOT NULL, yatak_kodu TEXT NOT NULL, cekim_zamani TEXT NOT NULL,
+                saat_dilimi TEXT NOT NULL, sira INTEGER NOT NULL, dosya_yolu TEXT NOT NULL,
+                dosya_boyutu INTEGER, durum TEXT NOT NULL DEFAULT 'bekliyor',
+                deneme INTEGER NOT NULL DEFAULT 0, sonraki_deneme TEXT NOT NULL,
+                son_hata TEXT, gonderim_zamani TEXT);
+        """)
+        db.execute("INSERT INTO kayitlar (kayit_id, cift_id, tesis_kodu, kamera_kodu, yatak_kodu,"
+                   " cekim_zamani, saat_dilimi, sira, dosya_yolu, sonraki_deneme)"
+                   " VALUES ('a','a','H01','K1','Y1','2026-10-01 10:00:00','+03:00',1,'x','x')")
+        db.commit()
+    finally:
+        db.close()
+
+    with v.baglan() as db:
+        satir = db.execute("SELECT kaynak, yukleyen FROM kayitlar WHERE kayit_id = 'a'").fetchone()
+    assert satir["kaynak"] == "kamera" and satir["yukleyen"] is None
+
+
+def test_sutun_gecisi_tekrar_calistirilinca_bir_sey_yapmaz(gecici_veritabani):
+    with v.baglan() as db:
+        assert v._kayit_sutunlarini_guncelle(db) is False

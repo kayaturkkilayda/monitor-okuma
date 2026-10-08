@@ -28,8 +28,12 @@ GUNLERE_GORE, LISTE = "Günlere göre", "Liste"
 
 # (sütun adı, başlık, genişlik)
 SUTUNLAR = [("cekim", "Çekim zamanı", 140), ("tesis", "Tesis", 60), ("kamera", "Kamera", 70),
-            ("yatak", "Yatak", 80), ("sira", "Sıra", 45), ("durum", "Durum", 85),
-            ("deneme", "Deneme", 60), ("hata", "Son hata", 150), ("gonderim", "Gönderim zamanı", 140)]
+            ("yatak", "Yatak", 80), ("sira", "Sıra", 45), ("kaynak", "Kaynak", 110),
+            ("durum", "Durum", 85), ("deneme", "Deneme", 60), ("hata", "Son hata", 150),
+            ("gonderim", "Gönderim zamanı", 140)]
+
+# Görüntünün nereden geldiği: kamera kendi çekti mi, biri telefonla mı gönderdi
+KAYNAK_YAZISI = {"kamera": "Kamera", "telefon": "Telefon"}
 
 YER_TUTUCU = "…"     # kapalı düğümün altındaki "yükleniyor" satırının öneki
 
@@ -139,9 +143,17 @@ def kamera_metni(o: dict) -> str:
     return f"{o['kamera_kodu']} → {o['yatak_kodu']} — {sayi(o['toplam'])} kayıt{ek}"
 
 
+def kaynak_metni(k: dict) -> str:
+    """'Kamera' ya da 'Telefon — ayse@...' (yükleyen belliyse yazılır)."""
+    kaynak = k.get("kaynak") or "kamera"
+    yazi = KAYNAK_YAZISI.get(kaynak, kaynak)
+    yukleyen = k.get("yukleyen")
+    return f"{yazi} — {yukleyen}" if yukleyen else yazi
+
+
 def satir_degerleri(k: dict) -> tuple:
     return (ekran_zamani(k["cekim_zamani"]), k["tesis_kodu"], k["kamera_kodu"], k["yatak_kodu"],
-            k["sira"], DURUM_YAZISI.get(k["durum"], k["durum"]), k["deneme"],
+            k["sira"], kaynak_metni(k), DURUM_YAZISI.get(k["durum"], k["durum"]), k["deneme"],
             k["son_hata"] or "", ekran_zamani(k["gonderim_zamani"]))
 
 

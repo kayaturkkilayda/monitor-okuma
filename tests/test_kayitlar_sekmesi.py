@@ -61,7 +61,7 @@ def test_kamera_listesi(ornekler):
 def test_satir_tarihleri_ekran_biciminde(ornekler):
     k = ks.kayitlari_getir(kamera="K1", durum="gonderildi")[0]
     assert ks.satir_degerleri(k) == ("01.10.2026 09:00:00", "H01", "K1", "Y1", 1,
-                                     "Gönderildi", 0, "", "01.10.2026 09:00:05")
+                                     "Kamera", "Gönderildi", 0, "", "01.10.2026 09:00:05")
 
 
 # ---------- Görüntü önizleme kararı ----------
@@ -160,3 +160,24 @@ def test_cift_tikta_diskteki_goruntu_onizlemede_acilir(sekme, monkeypatch, tmp_p
     sekme.liste.selection_set("g")
     sekme._goruntuyu_ac()
     assert acilan == [((20, 10), "g")]
+
+
+# ---------- Görüntünün kaynağı ----------
+
+def test_kamera_kaynagi_yazilir():
+    assert ks.kaynak_metni({"kaynak": "kamera"}) == "Kamera"
+    assert ks.kaynak_metni({}) == "Kamera"                  # eski kayıtlarda alan yok
+
+
+def test_telefon_kaynagi_yukleyenle_yazilir():
+    assert ks.kaynak_metni({"kaynak": "telefon", "yukleyen": "ayse@akgun.com.tr"}) ==         "Telefon — ayse@akgun.com.tr"
+
+
+def test_yukleyen_bilinmiyorsa_yalnizca_kaynak():
+    assert ks.kaynak_metni({"kaynak": "telefon", "yukleyen": None}) == "Telefon"
+
+
+def test_kaynak_sutunu_listede_var():
+    adlar = [ad for ad, _, _ in ks.SUTUNLAR]
+    assert "kaynak" in adlar
+    assert adlar.index("kaynak") == 5                        # Sıra ile Durum arasında
