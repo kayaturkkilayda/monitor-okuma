@@ -1,7 +1,7 @@
 import cv2
 import time
 from PIL import Image
-import pillow_avif  # AVIF desteğini ekler
+# AVIF desteği Pillow 12 ile hazır gelir; pillow-avif-plugin KULLANILMAZ
 from pathlib import Path
 
 kamera = cv2.VideoCapture(0)

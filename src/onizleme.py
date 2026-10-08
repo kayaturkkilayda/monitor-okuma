@@ -2,8 +2,7 @@
 import tkinter as tk
 from tkinter import ttk
 
-from PIL import Image, ImageTk
-import pillow_avif  # noqa: F401  AVIF görüntüleri açabilmek için
+from PIL import Image, ImageTk      # AVIF desteği Pillow 12 ile birlikte gelir
 
 EN_BUYUK = (800, 600)
 
