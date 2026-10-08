@@ -268,7 +268,12 @@ class Uygulama(tk.Tk):
             sekmeler, sahiplik.gorunen_kodlar(self.ayarlar["kameralar"], oturum))
         sekmeler.add(self.kayitlar_sekmesi, text="Kayıtlar")
 
-        self.loglar_sekmesi = LoglarSekmesi(sekmeler)
+        # Loglar da Kayıtlar gibi sahipliğe göre süzülür: normal kullanıcı yalnızca kendi
+        # kameralarının ve kendisiyle ilgili "sistem" satırlarını görür. Kodlar her yenilemede
+        # yeniden sorulur, böylece kamera eklenince logu hemen görünür.
+        self.loglar_sekmesi = LoglarSekmesi(
+            sekmeler, lambda: sahiplik.gorunen_kodlar(self.ayarlar["kameralar"], oturum),
+            oturum["eposta"])
         sekmeler.add(self.loglar_sekmesi, text="Loglar")
 
         # Ayarlar ve Kullanıcılar yalnızca yöneticide: SMTP, M4/API anahtarı ve izin verilen

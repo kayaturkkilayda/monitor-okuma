@@ -152,3 +152,111 @@ def test_ekranda_en_fazla_satir_tutulur(sekme, monkeypatch):
     satirlar = sekme.liste.get_children()
     assert len(satirlar) == 10
     assert sekme.liste.item(satirlar[-1], "values")[3] == "satır 19"
+
+
+# ---------- Kamera sahipliği ----------
+
+AYSE = "ayse@ornek.com"
+VELI = "veli@ornek.com"
+
+
+@pytest.fixture
+def sahiplik_ornekleri():
+    """A = Ayşe (K1), B = Veli (K2). Araya iki kullanıcının giriş satırı da konur."""
+    olay_ekle("INFO", "Motor başladı")
+    olay_ekle("INFO", f"Kullanıcı giriş yaptı: {AYSE}")
+    olay_ekle("INFO", f"Kullanıcı giriş yaptı: {VELI}")
+    olay_ekle("WARNING", "K1 | gönderilemedi", kaynak="K1")
+    olay_ekle("ERROR", "K2 | ARIZA", kaynak="K2")
+    olay_ekle("INFO", "Telefon yükleme sunucusu açıldı (port 8765)")
+
+
+def test_yonetici_butun_satirlari_gorur(sahiplik_ornekleri):
+    """kamera_kodlari None = sınır yok."""
+    assert mesajlar(ls.olaylari_getir(HEPSI, kamera_kodlari=None, eposta=AYSE)) == [
+        "Motor başladı", f"Kullanıcı giriş yaptı: {AYSE}", f"Kullanıcı giriş yaptı: {VELI}",
+        "K1 | gönderilemedi", "K2 | ARIZA", "Telefon yükleme sunucusu açıldı (port 8765)"]
+
+
+def test_kullanici_yalnizca_kendi_kamerasini_gorur(sahiplik_ornekleri):
+    assert mesajlar(ls.olaylari_getir(HEPSI, kamera_kodlari=["K1"], eposta=AYSE)) == [
+        f"Kullanıcı giriş yaptı: {AYSE}", "K1 | gönderilemedi"]
+
+
+def test_baska_kullanicinin_kamera_logu_gorunmez(sahiplik_ornekleri):
+    assert "K2 | ARIZA" not in mesajlar(ls.olaylari_getir(HEPSI, kamera_kodlari=["K1"], eposta=AYSE))
+
+
+def test_baska_kullanicinin_giris_satiri_gorunmez(sahiplik_ornekleri):
+    gorunen = mesajlar(ls.olaylari_getir(HEPSI, kamera_kodlari=["K1"], eposta=AYSE))
+    assert f"Kullanıcı giriş yaptı: {VELI}" not in gorunen
+
+
+def test_kendi_giris_satiri_gorunur(sahiplik_ornekleri):
+    assert f"Kullanıcı giriş yaptı: {AYSE}" in mesajlar(
+        ls.olaylari_getir(HEPSI, kamera_kodlari=["K1"], eposta=AYSE))
+
+
+def test_genel_sistem_satirlari_kullanicida_gorunmez(sahiplik_ornekleri):
+    """Motor başladı, sunucu açıldı gibi satırlar yalnızca yöneticide."""
+    gorunen = mesajlar(ls.olaylari_getir(HEPSI, kamera_kodlari=["K1"], eposta=AYSE))
+    assert "Motor başladı" not in gorunen
+    assert "Telefon yükleme sunucusu açıldı (port 8765)" not in gorunen
+
+
+def test_kamerasi_olmayan_kullanici_yalnizca_kendi_satirlarini_gorur(sahiplik_ornekleri):
+    assert mesajlar(ls.olaylari_getir(HEPSI, kamera_kodlari=[], eposta=AYSE)) == [
+        f"Kullanıcı giriş yaptı: {AYSE}"]
+
+
+def test_kamerasi_ve_epostasi_olmayana_hicbir_satir_gosterilmez(sahiplik_ornekleri):
+    assert ls.olaylari_getir(HEPSI, kamera_kodlari=[], eposta="") == []
+
+
+def test_eposta_buyuk_kucuk_harf_ayirmaz(sahiplik_ornekleri):
+    assert f"Kullanıcı giriş yaptı: {AYSE}" in mesajlar(
+        ls.olaylari_getir(HEPSI, kamera_kodlari=[], eposta="Ayse@Ornek.COM"))
+
+
+def test_eposta_altcizgisi_joker_sayilmaz():
+    """'_' LIKE'ta tek karakter jokeridir; kaçırılmazsa başka e-posta da eşleşir."""
+    olay_ekle("INFO", "Kullanıcı giriş yaptı: aXb@ornek.com")
+    assert ls.olaylari_getir(HEPSI, kamera_kodlari=[], eposta="a_b@ornek.com") == []
+
+
+def test_seviye_filtresi_sahiplikle_birlikte_calisir(sahiplik_ornekleri):
+    assert mesajlar(ls.olaylari_getir(ls.SEVIYE_SECENEKLERI["Uyarı ve hata"],
+                                      kamera_kodlari=["K1"], eposta=AYSE)) == ["K1 | gönderilemedi"]
+
+
+def test_yalnizca_yeni_olaylar_da_suzulur(sahiplik_ornekleri):
+    ilk = ls.olaylari_getir(HEPSI, kamera_kodlari=["K1"], eposta=AYSE)
+    son = ilk[0]["id"]
+    assert mesajlar(ls.olaylari_getir(HEPSI, son_id=son,
+                                      kamera_kodlari=["K1"], eposta=AYSE)) == ["K1 | gönderilemedi"]
+
+
+# ---------- Sekme sahipliği ----------
+
+def test_sekme_kullanicinin_kodlarini_her_yenilemede_sorar(tk_kok, sahiplik_ornekleri):
+    kodlar = ["K1"]
+    sekme = ls.LoglarSekmesi(tk_kok, lambda: list(kodlar), AYSE)
+    try:
+        gorunen = [sekme.liste.item(s, "values")[3] for s in sekme.liste.get_children()]
+        assert gorunen == [f"Kullanıcı giriş yaptı: {AYSE}", "K1 | gönderilemedi"]
+
+        kodlar.append("K2")            # kullanıcı yeni kamera ekledi
+        olay_ekle("ERROR", "K2 | yeni arıza", kaynak="K2")
+        sekme.yenile()
+        assert [sekme.liste.item(s, "values")[3]
+                for s in sekme.liste.get_children()][-1] == "K2 | yeni arıza"
+    finally:
+        sekme.destroy()
+
+
+def test_sekme_yoneticide_hepsini_gosterir(tk_kok, sahiplik_ornekleri):
+    sekme = ls.LoglarSekmesi(tk_kok)
+    try:
+        assert len(sekme.liste.get_children()) == 6
+    finally:
+        sekme.destroy()

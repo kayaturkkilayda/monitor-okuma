@@ -1,10 +1,21 @@
-"""Arayüzün Loglar sekmesi: olaylar tablosu (arıza, uyarı, hata ve motor olayları)."""
+"""Arayüzün Loglar sekmesi: olaylar tablosu (arıza, uyarı, hata ve motor olayları).
+
+Kim hangi satırı görür (süzme veri okunurken yapılır, log dosyası/veritabanı aynı kalır):
+- Yönetici bütün satırları görür.
+- Normal kullanıcı yalnızca sahibi olduğu kameraların satırlarını görür (sahiplik kuralı
+  src/sahiplik.py'de; buradaki kodlar oradan gelir).
+- "sistem" satırlarından ise yalnızca kendisiyle ilgili olanları (kendi girişi gibi, yani
+  mesajında kendi e-postası geçenleri) görür. Motor başladı, sunucu açıldı gibi genel
+  satırlar ve başka kullanıcıların giriş satırları yalnızca yöneticide görünür.
+"""
 import sqlite3
 import tkinter as tk
 from tkinter import ttk
 
 from veritabani import baglan
 from zaman import ekran_zamani
+
+SISTEM_KAYNAGI = "sistem"   # kameraya değil, programın kendisine ait satırlar
 
 YENILEME_MS = 3000
 EN_FAZLA = 1000           # ekranda en çok bu kadar satır tutulur
@@ -27,20 +38,52 @@ SEVIYE_YAZI_RENGI = {"INFO": "#15603a", "WARNING": "#7a5800", "ERROR": "#8a1020"
 
 # ---------- Veri (pencereden bağımsız, test edilebilir) ----------
 
-def olaylari_getir(seviyeler: tuple, son_id: int = 0, limit: int = EN_FAZLA) -> list[dict]:
-    """Eskiden yeniye sıralı olaylar.
+def _like_deseni(eposta: str) -> str:
+    r"""LIKE deseni; e-postadaki \ % _ karakterleri joker sayılmasın."""
+    kacis = eposta.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{kacis}%"
+
+
+def sahiplik_kosulu(kamera_kodlari: list[str] | None, eposta: str = "") -> tuple[str, tuple]:
+    """Normal kullanıcıya gösterilecek satırların SQL koşulu ve değerleri.
+
+    kamera_kodlari None ise (yönetici) koşul yoktur: bütün satırlar görünür.
+    Görülecek kamerası da e-postası da olmayan kullanıcıya hiçbir satır gösterilmez.
+    """
+    if kamera_kodlari is None:
+        return "", ()
+    parcalar, degerler = [], []
+    if kamera_kodlari:
+        parcalar.append(f"kaynak IN ({', '.join('?' * len(kamera_kodlari))})")
+        degerler.extend(kamera_kodlari)
+    if eposta.strip():
+        parcalar.append(r"(kaynak = ? AND lower(mesaj) LIKE ? ESCAPE '\')")
+        degerler.extend((SISTEM_KAYNAGI, _like_deseni(eposta.strip().lower())))
+    if not parcalar:
+        return " AND 0", ()
+    return " AND (" + " OR ".join(parcalar) + ")", tuple(degerler)
+
+
+def olaylari_getir(seviyeler: tuple, son_id: int = 0, limit: int = EN_FAZLA,
+                   kamera_kodlari: list[str] | None = None, eposta: str = "") -> list[dict]:
+    """Eskiden yeniye sıralı, oturum sahibinin görebildiği olaylar.
 
     son_id = 0 : son `limit` olay (ilk yükleme)
     son_id > 0 : yalnızca bu id'den sonra gelen yeni olaylar
+    kamera_kodlari = None : sınır yok (yönetici); liste ise yalnızca o kameralar
     """
     yer = ", ".join("?" * len(seviyeler))
+    kosul, sahiplik_degerleri = sahiplik_kosulu(kamera_kodlari, eposta)
+    nerede = f"WHERE seviye IN ({yer}){kosul}"
     with baglan() as db:
         if son_id:
-            satirlar = db.execute(f"SELECT * FROM olaylar WHERE seviye IN ({yer}) AND id > ?"
-                                  " ORDER BY id LIMIT ?", (*seviyeler, son_id, limit)).fetchall()
+            satirlar = db.execute(f"SELECT * FROM olaylar {nerede} AND id > ?"
+                                  " ORDER BY id LIMIT ?",
+                                  (*seviyeler, *sahiplik_degerleri, son_id, limit)).fetchall()
         else:
-            satirlar = db.execute(f"SELECT * FROM olaylar WHERE seviye IN ({yer})"
-                                  " ORDER BY id DESC LIMIT ?", (*seviyeler, limit)).fetchall()[::-1]
+            satirlar = db.execute(f"SELECT * FROM olaylar {nerede}"
+                                  " ORDER BY id DESC LIMIT ?",
+                                  (*seviyeler, *sahiplik_degerleri, limit)).fetchall()[::-1]
     return [dict(s) for s in satirlar]
 
 
@@ -52,8 +95,16 @@ def satir_degerleri(o: dict) -> tuple:
 # ---------- Sekme ----------
 
 class LoglarSekmesi(ttk.Frame):
-    def __init__(self, ust):
+    """kodlari_al: görülebilecek kamera kodlarını döndüren işlev. None = hepsi (yönetici).
+
+    Kamera listesi pencere açıkken değişebildiği (kamera eklenip silinebildiği) için kodlar
+    her yenilemede yeniden sorulur.
+    """
+
+    def __init__(self, ust, kodlari_al=None, eposta: str = ""):
         super().__init__(ust, padding=10)
+        self.kodlari_al = kodlari_al
+        self.eposta = eposta
         self.son_id = 0
         self._kur()
         self._periyodik_yenile()
@@ -103,7 +154,9 @@ class LoglarSekmesi(ttk.Frame):
     def yenile(self):
         """Yalnızca yeni olayları alta ekler; var olan satırlara (ve seçime) dokunmaz."""
         try:
-            yeniler = olaylari_getir(SEVIYE_SECENEKLERI[self.seviye.get()], self.son_id)
+            kodlar = self.kodlari_al() if self.kodlari_al else None
+            yeniler = olaylari_getir(SEVIYE_SECENEKLERI[self.seviye.get()], self.son_id,
+                                     kamera_kodlari=kodlar, eposta=self.eposta)
         except sqlite3.Error as e:
             self.bilgi.config(text=f"Veritabanı okunamadı ({type(e).__name__})", foreground="#b00020")
             return
