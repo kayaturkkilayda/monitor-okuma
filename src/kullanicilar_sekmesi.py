@@ -2,6 +2,7 @@
 from datetime import datetime
 from tkinter import messagebox, ttk
 
+import tema
 import kullanicilar as ku
 from veritabani import olay
 from zaman import db_zamani, ekran_zamani
@@ -9,6 +10,8 @@ from zaman import db_zamani, ekran_zamani
 # Önce kişiyi tanıtan bilgiler (Ad, Rol), sonra kimlik ve durum
 SUTUNLAR = [("ad", "Ad", 160), ("rol", "Rol", 90), ("eposta", "E-posta", 220),
             ("durum", "Durum", 120), ("son", "Son giriş", 140)]
+
+ZAMAN_SUTUNLARI = {"son"}          # ekran_zamani() değeri gösterenler
 
 
 def satir_degerleri(k: dict, simdi: str) -> tuple:
@@ -30,7 +33,8 @@ class KullanicilarSekmesi(ttk.Frame):
         self.liste = ttk.Treeview(self, columns=[ad for ad, _, _ in SUTUNLAR], show="headings", height=14)
         for ad, baslik, genislik in SUTUNLAR:
             self.liste.heading(ad, text=baslik)
-            self.liste.column(ad, width=genislik)
+            self.liste.column(ad, width=tema.sutun_genisligi(
+                baslik, genislik, tema.ZAMAN_ORNEGI if ad in ZAMAN_SUTUNLARI else ""))
         self.liste.tag_configure("yonetici", background="#e7f1ff")
         self.liste.pack(fill="both", expand=True)
 

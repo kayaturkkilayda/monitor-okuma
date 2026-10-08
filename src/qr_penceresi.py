@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 
 import qr_kod
+import tema
 
 GRI = "#5f6b7a"
 
@@ -32,7 +33,7 @@ class QrPenceresi(tk.Toplevel):
         govde.pack(fill="both", expand=True)
 
         ttk.Label(govde, text=f"{kamera['kod']} → {kamera['yatak']}",
-                  font=("Segoe UI", 16, "bold")).pack()
+                  font=(tema.AILE, tema.BUYUK, "bold")).pack()
         ttk.Label(govde, text="Telefonla okutup monitör fotoğrafı gönderin",
                   foreground=GRI).pack(pady=(0, 12))
 
@@ -40,11 +41,12 @@ class QrPenceresi(tk.Toplevel):
         ttk.Label(govde, image=self.resim).pack()
 
         ttk.Label(govde, text=self.adres, foreground=GRI,
-                  font=("Consolas", 9)).pack(pady=(10, 0))
+                  font=tema.TEK_ARALIK_YAZI).pack(pady=(10, 0))
 
         if not acik:
             ttk.Label(govde, text="Telefon yükleme KAPALI. Ayarlar sekmesinden açın.",
-                      foreground="#b00020", wraplength=300).pack(pady=(10, 0))
+                      foreground="#b00020",
+                      wraplength=tema.sarma_genisligi(300)).pack(pady=(10, 0))
 
         dugmeler = ttk.Frame(govde)
         dugmeler.pack(pady=(14, 0))

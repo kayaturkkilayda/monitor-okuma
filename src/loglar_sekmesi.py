@@ -12,6 +12,7 @@ import sqlite3
 import tkinter as tk
 from tkinter import ttk
 
+import tema
 from veritabani import baglan
 from zaman import ekran_zamani
 
@@ -24,6 +25,8 @@ SEVIYE_SECENEKLERI = {"Hepsi": ("INFO", "WARNING", "ERROR"),
                       "Uyarı ve hata": ("WARNING", "ERROR"),
                       "Sadece hata": ("ERROR",)}
 SEVIYE_YAZISI = {"INFO": "Bilgi", "WARNING": "Uyarı", "ERROR": "Hata"}
+
+ZAMAN_SUTUNLARI = {"zaman"}        # ekran_zamani() değeri gösterenler; sütun ona göre genişler
 
 SUTUNLAR = [("zaman", "Zaman", 140), ("seviye", "Seviye", 60),
             ("kaynak", "Kaynak", 70), ("mesaj", "Mesaj", 600)]
@@ -130,7 +133,9 @@ class LoglarSekmesi(ttk.Frame):
                                   show="headings", height=15)
         for ad, baslik, genislik in SUTUNLAR:
             self.liste.heading(ad, text=baslik)
-            self.liste.column(ad, width=genislik, stretch=(ad == "mesaj"))
+            self.liste.column(ad, width=tema.sutun_genisligi(
+                baslik, genislik, tema.ZAMAN_ORNEGI if ad in ZAMAN_SUTUNLARI else ""),
+                stretch=(ad == "mesaj"))
         for seviye, arka in SEVIYE_RENGI.items():
             self.liste.tag_configure(seviye, background=arka,
                                      foreground=SEVIYE_YAZI_RENGI[seviye])

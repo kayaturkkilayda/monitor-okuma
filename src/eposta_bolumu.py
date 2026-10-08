@@ -7,6 +7,7 @@ Böylece yönetici aynı adresi iki kez yazmaz ve yanlış gönderen adresi giri
 import tkinter as tk
 from tkinter import ttk
 
+import tema
 from arka_plan import arka_planda
 from bildirim import GUVENLIK_SECENEKLERI, gecersiz_adresler, test_maili_gonder
 
@@ -75,32 +76,37 @@ class EpostaBolumu(ttk.LabelFrame):
         self.varsayilan_alici = varsayilan_alici
         self.tasinan = {ad: smtp.get(ad, "") for ad in TASINAN_ALANLAR}
         self.degerler = {}
-        for i, (ad, etiket, tur) in enumerate(ALANLAR):
-            ttk.Label(self, text=etiket).grid(row=i, column=0, sticky="w", pady=4, padx=(0, 10))
+        self.columnconfigure(1, weight=1)        # giriş kutuları pencereyle birlikte büyür
+        satir = 0
+        for ad, etiket, tur in ALANLAR:
+            ttk.Label(self, text=etiket).grid(row=satir, column=0, sticky="w", pady=3, padx=(0, 10))
             varsayilan = {"guvenlik": "STARTTLS", "port": VARSAYILAN_PORT["STARTTLS"]}.get(ad, "")
             deger = tk.StringVar(value=str(smtp.get(ad, varsayilan)))
             if tur == "secim":
                 alan = ttk.Combobox(self, textvariable=deger, values=list(GUVENLIK_SECENEKLERI),
-                                    state="readonly", width=32)
+                                    state="readonly", width=20)
             else:
-                alan = ttk.Entry(self, textvariable=deger, width=35, show="*" if tur == "gizli" else "")
-            alan.grid(row=i, column=1, sticky="w", pady=4)
+                alan = ttk.Entry(self, textvariable=deger, width=20, show="*" if tur == "gizli" else "")
+            alan.grid(row=satir, column=1, sticky="ew", pady=3)
             self.degerler[ad] = deger
+            satir += 1
             if ad == "kullanici":
-                ttk.Label(self, text=KULLANICI_IPUCU, foreground="#5f6b7a",
-                          font=("Segoe UI", 8)).grid(row=i, column=2, sticky="w", padx=(8, 0))
+                # İpucu kutunun altında: yan yana koyunca kutuya genişlik kalmıyordu
+                ttk.Label(self, text=KULLANICI_IPUCU, style="Kucuk.TLabel").grid(
+                    row=satir, column=1, sticky="w", pady=(0, 4))
+                satir += 1
 
-        satir = len(ALANLAR)
         alici_yazisi = (f"Bildirimler {varsayilan_alici} adresine gider."
                         if varsayilan_alici else "Bildirim adresi: ayarları kaydeden yönetici.")
-        ttk.Label(self, text=alici_yazisi, foreground="#5f6b7a", font=("Segoe UI", 8),
-                  wraplength=330, justify="left").grid(row=satir, column=0, columnspan=3,
+        ttk.Label(self, text=alici_yazisi, style="Kucuk.TLabel",
+                  wraplength=tema.sarma_genisligi(330), justify="left").grid(row=satir, column=0, columnspan=2,
                                                        sticky="w", pady=(8, 0))
 
         self.test_dugmesi = ttk.Button(self, text="Test maili gönder", command=self._test)
         self.test_dugmesi.grid(row=satir + 1, column=1, sticky="w", pady=(10, 0))
-        self.sonuc = ttk.Label(self, text="", wraplength=330, justify="left")
-        self.sonuc.grid(row=satir + 2, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        self.sonuc = ttk.Label(self, text="", wraplength=tema.sarma_genisligi(330),
+                               justify="left")
+        self.sonuc.grid(row=satir + 2, column=0, columnspan=2, sticky="w", pady=(6, 0))
 
     def dogrula(self):
         degerler = {ad: v.get() for ad, v in self.degerler.items()}

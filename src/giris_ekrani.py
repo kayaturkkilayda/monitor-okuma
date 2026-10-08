@@ -8,6 +8,7 @@ from tkinter import ttk
 
 import kullanicilar as ku
 import oturum
+import tema
 from arka_plan import arka_planda
 from eposta_girisi import EpostaGirisi, oneri_alanlari
 from kod_girisi import KodGirisi
@@ -23,13 +24,13 @@ ALAN_GENISLIGI = 34               # karakter; etiketler alanların üstünde old
 
 def stilleri_kur():
     """Giriş ekranının kendi ttk stilleri. Tema değişse de bir kez tanımlanması yeter."""
-    stil = ttk.Style()
-    stil.configure("Giris.TButton", font=("Segoe UI", 11), padding=(0, 8))
-    stil.configure("GirisBaslik.TLabel", font=("Segoe UI", 18))
-    stil.configure("GirisAciklama.TLabel", foreground=GRI, font=("Segoe UI", 9))
-    stil.configure("GirisEtiket.TLabel", foreground=GRI, font=("Segoe UI", 9))
+    stil = tema.kur()
+    stil.configure("Giris.TButton", font=tema.YAZI, padding=(0, 8))
+    stil.configure("GirisBaslik.TLabel", font=(tema.AILE, tema.BUYUK))
+    stil.configure("GirisAciklama.TLabel", foreground=GRI, font=tema.KUCUK_YAZI)
+    stil.configure("GirisEtiket.TLabel", foreground=GRI, font=tema.KUCUK_YAZI)
     stil.configure("GirisBaglanti.TLabel", foreground=BAGLANTI,
-                   font=("Segoe UI", 9, "underline"))
+                   font=(tema.AILE, tema.KUCUK, "underline"))
 
 
 class GirisEkrani(ttk.Frame):
@@ -96,7 +97,7 @@ class GirisEkrani(ttk.Frame):
         satir += 1
         if aciklama:
             ttk.Label(cerceve, text=aciklama, style="GirisAciklama.TLabel",
-                      wraplength=320, justify="left").grid(row=satir, column=0, sticky="w",
+                      wraplength=tema.sarma_genisligi(320), justify="left").grid(row=satir, column=0, sticky="w",
                                                            pady=(6, 0))
             satir += 1
 
@@ -153,7 +154,8 @@ class GirisEkrani(ttk.Frame):
                     ttk.Label(alt, text="•", foreground=GRI).pack(side="left", padx=9)
                 self._baglanti(alt, metin, komut)
 
-        mesaj = ttk.Label(cerceve, text="", wraplength=320, justify="left")
+        mesaj = ttk.Label(cerceve, text="", wraplength=tema.sarma_genisligi(320),
+                          justify="left")
         mesaj.grid(row=satir, column=0, sticky="w", pady=(16, 0))
         self.ekranlar[ad], self.alanlar[ad], self.mesajlar[ad], self.dugmeler[ad] = \
             cerceve, degerler, mesaj, (dugme, ana_dugme[0])

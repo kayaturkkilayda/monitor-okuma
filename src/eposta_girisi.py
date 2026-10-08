@@ -81,7 +81,7 @@ class EpostaGirisi(ttk.Frame):
         self.giris = ttk.Entry(self, textvariable=degisken, width=genislik)
         self.giris.grid(row=0, column=0, sticky="we")
         self.columnconfigure(0, weight=1)
-        self.ipucu = ttk.Label(self, text="", font=("Segoe UI", 8))
+        self.ipucu = ttk.Label(self, text="", style="Kucuk.TLabel")
         self.ipucu.grid(row=1, column=0, sticky="w")
 
         degisken.trace_add("write", lambda *a: self._ipucu_guncelle(son_karar=False))

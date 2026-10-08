@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from ayarlar import ayarlari_yaz, degisen_alanlar
+import tema
 from eposta_bolumu import EpostaBolumu
 from telefon_sunucusu import VARSAYILAN_PORT as VARSAYILAN_TELEFON_PORT, sunucu_ayari
 from kullanicilar import alan_adi_listesi
@@ -60,11 +61,12 @@ class AlanAdiListesi(ttk.Frame):
     def __init__(self, ust, alanlar=None):
         super().__init__(ust)
         self.satirlar = []                      # [(çerçeve, StringVar)]
+        self.columnconfigure(0, weight=1)
         self.satir_cercevesi = ttk.Frame(self)
-        self.satir_cercevesi.grid(row=0, column=0, sticky="w")
+        self.satir_cercevesi.grid(row=0, column=0, sticky="ew")
         self.ekle_dugmesi = ttk.Button(self, text="+ Alan adı ekle", command=self.ekle)
         self.ekle_dugmesi.grid(row=1, column=0, sticky="w", pady=(4, 0))
-        self.bilgi = ttk.Label(self, text="", foreground="#555555", font=("Segoe UI", 8))
+        self.bilgi = ttk.Label(self, text="", style="Kucuk.TLabel")
         self.bilgi.grid(row=2, column=0, sticky="w")
         for alan in alan_adi_listesi(alanlar):
             self.ekle(alan)
@@ -72,13 +74,13 @@ class AlanAdiListesi(ttk.Frame):
 
     def ekle(self, alan: str = ""):
         satir = ttk.Frame(self.satir_cercevesi)
-        satir.pack(anchor="w", pady=1)
+        satir.pack(fill="x", pady=1)
         deger = tk.StringVar(value=alan)
-        giris = ttk.Entry(satir, textvariable=deger, width=40)
-        giris.pack(side="left")
+        giris = ttk.Entry(satir, textvariable=deger, width=20)
         kayit = (satir, deger)
         ttk.Button(satir, text="−", width=3,
-                   command=lambda k=kayit: self.sil(k)).pack(side="left", padx=(4, 0))
+                   command=lambda k=kayit: self.sil(k)).pack(side="right", padx=(4, 0))
+        giris.pack(side="left", fill="x", expand=True)   # "−" sağda sabit, kutu genişlikle büyür
         self.satirlar.append(kayit)
         self._bilgi_guncelle()
         return giris
@@ -121,49 +123,68 @@ class AyarSekmesi(ttk.Frame):
         self.etiketler = {ad: etiket for ad, etiket, _ in SATIRLAR}
         self.degerler = {}
 
+        # Üstte iki eşit sütun (solda genel ayarlar, sağda e-posta), altta Kaydet.
+        # uniform ile iki sütun aynı genişlikte kalır, weight ile pencereyle büyür.
+        # Form küçük ekranda kesilmesin diye iki sütun kaydırılabilir alanın içindedir;
+        # Kaydet düğmesi kaydırmanın dışında, altta sabit kalır.
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+        kaydirma = tema.DikeyKaydirma(self)
+        kaydirma.grid(row=0, column=0, sticky="nsew")
+        self.govde = kaydirma.govde
+        self.govde.columnconfigure(0, weight=1, uniform="bolum")
+        self.govde.columnconfigure(1, weight=1, uniform="bolum")
+        self.govde.rowconfigure(0, weight=1)
+
+        genel = ttk.LabelFrame(self.govde, text="Genel ayarlar", padding=10)
+        genel.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        genel.columnconfigure(1, weight=1)        # giriş kutuları genişlikle büyür
+
         for i, (ad, etiket, tur) in enumerate(SATIRLAR):
-            ttk.Label(self, text=etiket).grid(row=i, column=0, sticky="w", pady=5, padx=(0, 15))
+            ttk.Label(genel, text=etiket).grid(row=i, column=0, sticky="w", pady=2, padx=(0, 15))
             deger = tk.StringVar(value=str(ayarlar.get(ad, VARSAYILANLAR.get(ad, ""))))
             if tur == "secim":
-                alan = ttk.Combobox(self, textvariable=deger, values=["avif", "jpg"],
-                                    state="readonly", width=47)
+                alan = ttk.Combobox(genel, textvariable=deger, values=["avif", "jpg"],
+                                    state="readonly", width=20)
             else:
-                alan = ttk.Entry(self, textvariable=deger, width=50,
+                alan = ttk.Entry(genel, textvariable=deger, width=20,
                                  show="*" if tur == "gizli" else "")
-            alan.grid(row=i, column=1, sticky="w", pady=5)
+            alan.grid(row=i, column=1, sticky="ew", pady=2)
             self.degerler[ad] = deger
 
-        ttk.Label(self, text="Kayıt için izin verilen\nalan adları").grid(
-            row=len(SATIRLAR), column=0, sticky="nw", pady=5, padx=(0, 15))
-        self.alan_adlari = AlanAdiListesi(self, ayarlar.get("izin_verilen_alan_adi"))
-        self.alan_adlari.grid(row=len(SATIRLAR), column=1, sticky="w", pady=5)
+        ttk.Label(genel, text="Kayıt için izin verilen\nalan adları").grid(
+            row=len(SATIRLAR), column=0, sticky="nw", pady=2, padx=(0, 15))
+        self.alan_adlari = AlanAdiListesi(genel, ayarlar.get("izin_verilen_alan_adi"))
+        self.alan_adlari.grid(row=len(SATIRLAR), column=1, sticky="ew", pady=2)
 
         self.sil = tk.BooleanVar(value=ayarlar.get("gonderilince_sil", True))
-        ttk.Checkbutton(self, text="Gönderilen görüntüleri hemen sil",
-                        variable=self.sil).grid(row=len(SATIRLAR) + 1, column=1, sticky="w", pady=5)
+        ttk.Checkbutton(genel, text="Gönderilen görüntüleri hemen sil", variable=self.sil).grid(
+            row=len(SATIRLAR) + 1, column=1, sticky="w", pady=(8, 2))
 
         # Telefondan fotoğraf yükleme: varsayılan kapalı, çünkü bilgisayarı ağa açar
         telefon = sunucu_ayari(ayarlar)
         self.telefon_acik = tk.BooleanVar(value=telefon["acik"])
         self.telefon_port = tk.StringVar(value=str(telefon["port"]))
-        kutu = ttk.Frame(self)
-        kutu.grid(row=len(SATIRLAR) + 2, column=1, sticky="w", pady=5)
+        # Port, onay kutusunun altında: yan yana koyunca sütun genişliğini aşıp kesiliyordu
+        kutu = ttk.Frame(genel)
+        kutu.grid(row=len(SATIRLAR) + 2, column=1, sticky="w", pady=2)
         ttk.Checkbutton(kutu, text="Telefondan fotoğraf yüklemeyi aç",
-                        variable=self.telefon_acik).pack(side="left")
-        ttk.Label(kutu, text="Port").pack(side="left", padx=(12, 4))
-        ttk.Entry(kutu, textvariable=self.telefon_port, width=7).pack(side="left")
-
-        ttk.Button(self, text="Kaydet", command=self._kaydet).grid(
-            row=len(SATIRLAR) + 3, column=1, sticky="w", pady=(15, 0))
+                        variable=self.telefon_acik).grid(row=0, column=0, columnspan=2, sticky="w")
+        ttk.Label(kutu, text="Port").grid(row=1, column=0, sticky="w", pady=(4, 0), padx=(20, 4))
+        ttk.Entry(kutu, textvariable=self.telefon_port, width=7).grid(
+            row=1, column=1, sticky="w", pady=(4, 0))
 
         # Bildirimler, ayarları kaydeden yöneticinin adresine gider; ayrıca sorulmaz
-        self.eposta = EpostaBolumu(self, ayarlar.get("smtp"), self.oturum.get("eposta", ""))
-        self.eposta.grid(row=0, column=2, rowspan=len(SATIRLAR) + 4, sticky="nw", padx=(25, 0))
+        self.eposta = EpostaBolumu(self.govde, ayarlar.get("smtp"), self.oturum.get("eposta", ""))
+        self.eposta.grid(row=0, column=1, sticky="nsew")
+
+        alt = ttk.Frame(self)                     # Kaydet pencere büyüse de altta kalır
+        alt.grid(row=1, column=0, sticky="ew", pady=(15, 0))
+        ttk.Button(alt, text="Kaydet", command=self._kaydet).pack(side="left")
 
         if not self.yonetici:
             salt_okunur_yap(self)
-            ttk.Label(self, text=YETKI_YOK, foreground="#b00020").grid(
-                row=len(SATIRLAR) + 4, column=1, sticky="w", pady=(10, 0))
+            ttk.Label(alt, text=YETKI_YOK, foreground="#b00020").pack(side="left", padx=(15, 0))
 
     def _dogrula(self):
         """(yeni ayarlar, None) ya da (None, hata mesajı) döndürür."""

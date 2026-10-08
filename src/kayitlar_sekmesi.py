@@ -14,6 +14,7 @@ from tkinter import messagebox, ttk
 from PIL import Image
 
 from onizleme import onizleme_ac
+import tema
 from veritabani import baglan
 from zaman import ekran_tarihini_coz, ekran_zamani
 
@@ -31,6 +32,8 @@ SUTUNLAR = [("cekim", "Çekim zamanı", 140), ("tesis", "Tesis", 60), ("kamera",
             ("yatak", "Yatak", 80), ("sira", "Sıra", 45), ("kaynak", "Kaynak", 110),
             ("durum", "Durum", 85), ("deneme", "Deneme", 60), ("hata", "Son hata", 150),
             ("gonderim", "Gönderim zamanı", 140)]
+
+ZAMAN_SUTUNLARI = {"cekim", "gonderim"}   # ekran_zamani() değeri gösterenler
 
 # Görüntünün nereden geldiği: kamera kendi çekti mi, biri telefonla mı gönderdi
 KAYNAK_YAZISI = {"kamera": "Kamera", "telefon": "Telefon"}
@@ -276,11 +279,12 @@ class KayitlarSekmesi(ttk.Frame):
         self.agac = ttk.Treeview(cerceve, columns=[ad for ad, _, _ in SUTUNLAR],
                                  show="tree headings", height=15)
         self.agac.heading("#0", text="Gün / kamera")
-        self.agac.column("#0", width=330, stretch=False)
+        self.agac.column("#0", width=tema.sutun_genisligi("Gün / kamera", 330), stretch=False)
         for ad, baslik, genislik in SUTUNLAR:
             self.agac.heading(ad, text=baslik)
-            self.agac.column(ad, width=genislik)
-        self.agac.tag_configure("gun", font=("Segoe UI", 9, "bold"))
+            self.agac.column(ad, width=tema.sutun_genisligi(
+                baslik, genislik, tema.ZAMAN_ORNEGI if ad in ZAMAN_SUTUNLARI else ""))
+        self.agac.tag_configure("gun", font=(tema.AILE, tema.NORMAL, "bold"))
         self.agac_cercevesi = self._kaydirmali(self.agac)
         self.agac.bind("<<TreeviewOpen>>", lambda e: self._dugum_acildi(self.agac.focus()))
         self.agac.bind("<<TreeviewClose>>", lambda e: self.ozet_imzasi.pop(self.agac.focus(), None))
@@ -293,7 +297,8 @@ class KayitlarSekmesi(ttk.Frame):
                                   show="headings", height=15)
         for ad, baslik, genislik in SUTUNLAR:
             self.liste.heading(ad, text=baslik)
-            self.liste.column(ad, width=genislik)
+            self.liste.column(ad, width=tema.sutun_genisligi(
+                baslik, genislik, tema.ZAMAN_ORNEGI if ad in ZAMAN_SUTUNLARI else ""))
         self.liste_cercevesi = self._kaydirmali(self.liste)
         self.liste.bind("<Double-1>", lambda e: self._goruntuyu_ac(self.liste))
 

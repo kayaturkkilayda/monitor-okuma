@@ -10,6 +10,7 @@ hatalı kodda kırmızı çerçeve gösterilemezdi.
 """
 import tkinter as tk
 from tkinter import ttk
+import tema
 
 HANE = 6
 RAKAMLAR = "0123456789"
@@ -41,7 +42,7 @@ class KodGirisi(ttk.Frame):
         for i in range(hane):
             deger = tk.StringVar()
             kutu = tk.Entry(self, textvariable=deger, width=2, justify="center",
-                            font=("Segoe UI", 18), relief="solid", borderwidth=1,
+                            font=tema.BUYUK_YAZI, relief="solid", borderwidth=1,
                             highlightthickness=2, highlightbackground=NORMAL_KENAR,
                             highlightcolor=ODAK_KENAR,
                             validate="key", validatecommand=(dogrula, "%P"))

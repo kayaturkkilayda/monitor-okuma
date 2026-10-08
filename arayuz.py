@@ -25,6 +25,7 @@ from giris_ekrani import GirisEkrani
 from kayitlar_sekmesi import KayitlarSekmesi
 from kullanicilar_sekmesi import KullanicilarSekmesi
 from log import log_kur
+import tema
 import oturum as oturum_deposu
 from loglar_sekmesi import LoglarSekmesi
 from onay import gorunen_adres, onay_ver, onayi_aktar, onayli_mi
@@ -157,14 +158,16 @@ class KameraFormu(tk.Toplevel):
 
         bilgi = ttk.LabelFrame(govde, text="Kamera bilgileri", padding=10)
         bilgi.pack(fill="x")
+        bilgi.columnconfigure(0, weight=1)
         ttk.Label(bilgi, text="Tip").grid(row=0, column=0, sticky="w", pady=(0, 2))
         self.tip = tk.StringVar(value=k.get("tip", "ip"))
         ttk.Combobox(bilgi, textvariable=self.tip, values=["ip", "webcam"],
-                     state="readonly", width=38).grid(row=1, column=0, sticky="we")
+                     state="readonly", width=38).grid(row=1, column=0, sticky="ew")
         self._alanlari_ekle(bilgi, self.BILGI_ALANLARI, k, baslangic=2)
 
         giris = ttk.LabelFrame(govde, text="Kamera girişi (isteğe bağlı)", padding=10)
         giris.pack(fill="x", pady=(12, 0))
+        giris.columnconfigure(0, weight=1)
         self._alanlari_ekle(giris, self.GIRIS_ALANLARI, k, baslangic=0)
 
         self.aktif = tk.BooleanVar(value=k.get("aktif", True))
@@ -190,10 +193,11 @@ class KameraFormu(tk.Toplevel):
                 kutu = IpuculuGiris(ust, deger, self.IPUCU, gizli=(ad == "sifre"), width=40)
             else:
                 kutu = ttk.Entry(ust, textvariable=deger, width=40)
-            kutu.grid(row=satir, column=0, sticky="we")
+            kutu.grid(row=satir, column=0, sticky="ew")
             satir += 1
             aciklama = ttk.Label(ust, text=self.ACIKLAMA.get(ad, ""), foreground=self.ACIKLAMA_RENGI,
-                                 font=("Segoe UI", 8), wraplength=300, justify="left")
+                                 style="Kucuk.TLabel",
+                                 wraplength=tema.sarma_genisligi(300), justify="left")
             aciklama.grid(row=satir, column=0, sticky="w", pady=(2, 0))
             satir += 1
             if ad == "adres":
@@ -244,7 +248,10 @@ class Uygulama(tk.Tk):
         """oturum: giriş yapan kullanıcı (eposta, ad, yonetici)."""
         super().__init__()
         self.title("Monitör Görüntü Aktarımı")
-        self.geometry("1100x600")
+        tema.kur(self)
+        # Boyutlar ekran ölçeğine göre büyür: yazılar DPI ile büyüyünce pencere de büyümeli
+        self.geometry("%dx%d" % tema.olcekli(*tema.ACILIS_PENCERESI, kok=self))
+        self.minsize(*tema.olcekli(*tema.EN_KUCUK_PENCERE, kok=self))
         self.oturum = oturum
         self.log = log
         self.cikis_yapildi = False
@@ -286,6 +293,11 @@ class Uygulama(tk.Tk):
             self.kullanicilar_sekmesi = KullanicilarSekmesi(sekmeler, oturum, log)
             sekmeler.add(self.kullanicilar_sekmesi, text="Kullanıcılar")
 
+        # Bütün sekmelerde içerik çok geniş ekranda saçma uzamasın: en çok
+        # tema.AZAMI_GENISLIK piksel kalır, artan yer iki yana boşluk olur.
+        for ad in sekmeler.tabs():
+            tema.genisligi_sinirla(self.nametowidget(ad))
+
         self._periyodik_yenile()
 
     # ---------- Liste ----------
@@ -298,7 +310,8 @@ class Uygulama(tk.Tk):
                                   show="headings", height=15)
         for ad, (baslik, genislik) in kolonlar.items():
             self.liste.heading(ad, text=baslik)
-            self.liste.column(ad, width=genislik)
+            self.liste.column(ad, width=tema.sutun_genisligi(
+                baslik, genislik, tema.ZAMAN_ORNEGI if ad == "son" else ""))
 
         self.liste.tag_configure("calisiyor", background="#d4edda")
         self.liste.tag_configure("arizali", background="#f8d7da")
@@ -639,6 +652,7 @@ def ayarlari_guvenli_oku() -> dict:
 def giris_penceresi(log) -> dict | None:
     """Giriş penceresini açar; giriş yapan kullanıcıyı ya da (pencere kapatılırsa) None döndürür."""
     pencere = tk.Tk()
+    tema.kur(pencere)
     pencere.title("Monitör Görüntü Aktarımı — Giriş")
     pencere.resizable(False, False)
     sonuc = {}
@@ -653,6 +667,7 @@ def giris_penceresi(log) -> dict | None:
 
 
 def calistir():
+    tema.dpi_farkindaligini_ac()     # Tk penceresi açılmadan önce: yazılar bulanık olmasın
     log = log_kur(ad="arayuz", dosya_adi="arayuz.log")
     try:                             # "Beni hatırla": bu cihazda açık kalan oturum varsa doğrudan aç
         oturum = oturum_deposu.hatirlanan_kullanici()
