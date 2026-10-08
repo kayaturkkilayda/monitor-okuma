@@ -9,6 +9,10 @@
   "saklama_gun": 7,
   "kayit_saklama_gun": 90,
   "gonderilince_sil": true,
+  "telefon_yukleme": {
+    "acik": false,
+    "port": 8099
+  },
   "izin_verilen_alan_adi": [],
   "smtp": {
     "sunucu": "",

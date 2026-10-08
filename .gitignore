@@ -6,11 +6,15 @@ loglar/
 config/ayarlar.json
 config/ayarlar.yedek.json
 config/ayarlar.*.json
-!config/ayarlar.ornek.json      # şablon; sır içermez, repoda kalır
+# Şablon; sır içermez, repoda kalır. (Git satır içi yorumu desteklemez,
+# bu yüzden açıklama kendi satırında durmalı.)
+!config/ayarlar.ornek.json
 .env
 *.jpg
 *.png
 *.avif
+# Belgelerdeki ekran görüntüleri: hasta/kişisel veri içermez, repoda kalır
+!docs/ekranlar/*.png
 # Python artifacts
 **/__pycache__/
 *.pyc
@@ -19,7 +23,8 @@ config/ayarlar.*.json
 # Build outputs and IDE files
 build/
 dist/
-*.spec
+# .spec dosyaları çıktı değil, derleme reçetesidir: repoda kalır
+# (arayuz_test.spec hata ayıklama içindir, teslim paketine girmez)
 .vscode/
 *.exe
 

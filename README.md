@@ -1,320 +1,193 @@
-# Monitör Görüntü Okuma ve Aktarım Uygulaması
+# Monitör Görüntü Aktarımı
 
-Bu doküman, uygulamanın mevcut geliştirme durumunu ve kullanımını açıklar.
+Yoğun bakımdaki hasta başı monitörlerin çoğunda dijital veri çıkışı yoktur; değerler hemşire
+tarafından elle deftere yazılır. Bu uygulama monitör ekranlarını IP kameralarla belirli
+aralıklarla fotoğraflar, görüntüyü kamera–yatak eşleşmesiyle etiketler ve hastanenin M4 (HBYS)
+sistemine otomatik gönderir. Ağ ya da API geçici olarak çalışmazsa görüntüler yerelde kuyruğa
+alınır ve artan aralıklarla yeniden denenir; hiçbir çekim kaybolmaz.
 
-## 1. Projenin amacı
+![Kameralar sekmesi](docs/ekranlar/1-kameralar.png)
 
-Bu proje, hasta monitörlerinden kamera aracılığıyla alınan görüntülerin Windows üzerinde alınması, yerelde işlenip kuyruklanması ve M4 API'ye gönderilebilmesi için geliştirilmiştir. Sistem iki ana programdan oluşur:
+---
 
-- `motor.exe`
-  - Arka planda çalışır.
-  - Kameralardan görüntü alır.
-  - Görüntüleri işler ve kaydeder.
-  - Kuyruk mekanizmasını yönetir.
-  - M4 API'ye gönderim yapar.
-  - Hata durumlarında tekrar dener.
-- `arayuz.exe`
-  - Kamera ayarlarını yönetir.
-  - Kamera-yatak eşleştirmesini yapar.
-  - M4/API ayarlarının girilmesini sağlar.
-  - Kamera bağlantısını test eder.
-  - Kameraların durumunu gösterir.
+## İçindekiler
 
-## 2. Şu ana kadar yapılanlar
+- [Özellikler](#özellikler)
+- [Nasıl çalışır](#nasıl-çalışır)
+- [Ekranlar](#ekranlar)
+- [Hızlı başlangıç](#hızlı-başlangıç)
+- [Klasör yapısı](#klasör-yapısı)
+- [Geliştiriciler için](#geliştiriciler-için)
+- [Güvenlik](#güvenlik)
+- [Bilinen sınırlar](#bilinen-sınırlar)
 
-- Python tabanlı uygulama geliştirildi.
-- Kamera bağlantısı için yapı hazırlandı.
-- Kamera-yatak eşleştirme yapısı hazırlandı.
-- Çift çekim mantığı hazırlandı.
-- Görüntülerin yerel olarak kaydedilmesi ve kuyruklanması hazırlandı.
-- M4 API gönderim altyapısı hazırlandı.
-- Geçici ağ/API hatalarında tekrar deneme mekanizması hazırlandı.
-- Gönderim kuyruğu, gönderim geçmişi ve olaylar SQLite veritabanında tutuluyor; kalıcı hatalı kayıtlar `hatali` durumuyla işaretleniyor.
-- Ayarlar arayüz üzerinden yönetiliyor.
-- Kamera ve M4 bilgileri kod içine gömülmeden ayar dosyası üzerinden yönetiliyor.
-- Şifrelerin düz metin olarak tutulmaması için Windows DPAPI kullanılıyor.
-- Sahte kamera ve sahte M4 ile test ortamı oluşturuldu.
-- Otomatik testler yazıldı.
-- PyInstaller ile `motor.exe` ve `arayuz.exe` oluşturma işlemi yapıldı.
-- Proje Git ile commitlendi ve GitHub repository'sine gönderildi.
+---
 
-## 3. EXE oluşturma sırasında karşılaşılan hata
+## Özellikler
 
-PyInstaller ile EXE oluşturma sırasında sorun kaynak kod tarafında değil, paketlenmiş EXE çalıştırılırken NumPy'nin native bileşenlerinden birinin Windows tarafından engellenmesidir.
+| | |
+|---|---|
+| **Çift çekim** | Her turda iki kare alınır; biri bulanık çıkarsa diğeri kullanılabilir. |
+| **Kuyruk ve tekrar deneme** | Gönderilemeyen görüntü SQLite kuyruğunda bekler, artan aralıklarla yeniden denenir. Kalıcı hata `hatali` olarak işaretlenir. |
+| **Kamera onayı** | Yeni kamera, e-posta ile gelen 6 haneli kod girilene kadar görüntü çekmez. Onaysız kamera motorda çalışmaz. |
+| **Kullanıcı hesapları** | E-posta doğrulamalı giriş, yönetici/kullanıcı ayrımı, hatalı denemede hesap kilidi. |
+| **Kamera sahipliği** | Kamerayı ekleyen kişi onun sahibidir. Normal kullanıcı yalnızca kendi kameralarını, kayıtlarını ve loglarını görür; yönetici hepsini görür. |
+| **Arıza bildirimi** | Kamera üst üste yanıt vermezse e-posta gider; düzelince ikinci bir e-posta gelir. |
+| **Telefonla fotoğraf** | Yatak başındaki QR kod okutularak telefondan fotoğraf yüklenebilir. Varsayılan **kapalı**. |
+| **Otomatik temizlik** | Gönderilen görüntüler ve eski kayıtlar ayarlanan süre sonunda silinir. |
+| **Yerel test ortamı** | Gerçek kamera ve gerçek M4 olmadan uçtan uca denenebilir ([araclar/](araclar/)). |
 
-Alınan hata özeti:
+## Nasıl çalışır
 
-`ImportError: DLL load failed while importing _multiarray_umath`
+Uygulama **iki ayrı programdır**. Aynı klasörde dururlar, aynı ayar dosyasını ve aynı
+veritabanını paylaşırlar, ama birbirinden bağımsız çalışırlar: arayüz kapalıyken motor çekim
+yapmaya devam eder.
 
-Windows Code Integrity günlüğünde görülen kayıt:
+```
+   IP kameralar                                                M4 (HBYS) API
+        │                                                            ▲
+        │ HTTP snapshot                                      HTTPS   │
+        ▼                                                            │
+   ┌─────────────┐                                                   │
+   │  motor.exe  │ ── çeker ──► kaydeder ──► kuyruğa alır ── gönderir ┘
+   │ (penceresiz)│                                  │
+   └──────┬──────┘                                  │ başarısızsa
+          │                                         └─► tekrar dener
+          │ okur/yazar
+          ▼
+   ┌───────────────────────────┐          ┌──────────────┐
+   │ config/ayarlar.json       │◄────────►│  arayuz.exe  │
+   │ veri/monitor.db (SQLite)  │          │  (Tkinter)   │
+   │ durum.json                │          └──────────────┘
+   └───────────────────────────┘           ayar girer, kamera yönetir,
+                                           durum / kayıt / log izler
+```
 
-`attempted to load ... numpy\_core\_multiarray_umath.cp314-win_amd64.pyd that did not meet the Enterprise signing level requirements.`
+- **`motor.exe`** — penceresi yoktur, arka planda sürekli çalışır. Kameralardan görüntü çeker,
+  diske kaydeder, kuyruğa alır, M4'e gönderir, başarısız olanı tekrar dener, eski dosyaları
+  temizler ve arıza e-postalarını yollar. Görev Zamanlayıcı ile açılışta başlatılır.
+- **`arayuz.exe`** — kullanıcı gerektiğinde açar. Ayar girişi, kamera ekleme/düzenleme, bağlantı
+  testi, kamera durumu, gönderim kayıtları ve olay günlüğü buradadır.
 
-Windows tarafında Smart App Control / uygulama kontrolü, imzasız veya güvenilmeyen bir bileşeni engellemiştir. Önemli ayrım şudur:
+Motor, ayar dosyasındaki değişikliği 5 saniye içinde kendisi fark eder; yeniden başlatmak
+gerekmez. Ayar dosyası bozuksa eski ayarlarla çalışmayı sürdürür.
 
-- Python ortamındaki NumPy çalışmaktadır.
-- OpenCV ve NumPy Python ortamında import edilebilmektedir.
-- Sorun, PyInstaller ile paketlenen EXE içindeki NumPy native `.pyd` bileşeninin Windows güvenlik politikası tarafından engellenmesidir.
-- EXE üretimi tamamlanmış olsa da bazı makinelerde EXE çalıştırılırken Windows güvenlik politikası engeli oluşabilir.
-- Bu durum kaynak kodunun çalışmadığı anlamına gelmez.
+## Ekranlar
 
-Windows güvenlik mekanizmalarının devre dışı bırakılması önerilmez. Kurumsal ortamda kod imzalama ve allowlist gibi BT tarafından uygulanabilecek yöntemler değerlendirilmelidir.
+| Giriş | Kameralar |
+|---|---|
+| ![Giriş ekranı](docs/ekranlar/0-giris.png) | ![Kameralar](docs/ekranlar/1-kameralar.png) |
 
-### Çözüm
+| Kayıtlar | Loglar |
+|---|---|
+| ![Kayıtlar](docs/ekranlar/2-kayitlar.png) | ![Loglar](docs/ekranlar/3-loglar.png) |
 
-Paketleme `--onefile` yerine `--onedir` ile yapılınca sorun aşıldı. `--onefile` ile üretilen EXE, bileşenlerini her açılışta geçici bir klasöre çıkarır; güvenlik yazılımları bu davranışı engeller. `--onedir` ile bileşenler kurulum klasöründe sabit olarak durur.
+| Ayarlar | Kullanıcılar |
+|---|---|
+| ![Ayarlar](docs/ekranlar/4-ayarlar.png) | ![Kullanıcılar](docs/ekranlar/5-kullanicilar.png) |
 
-İki programın bileşenleri aynı kurulum klasöründe çakışmasın diye `--contents-directory _motor` ve `--contents-directory _arayuz` seçenekleri kullanılır.
+> Ekran görüntülerindeki bütün veriler uydurmadır; gerçek hasta, kişi, tesis ya da adres
+> bilgisi içermez.
 
-Hastane ortamında imzasız EXE'ler yine engellenebileceği için kod imzalama sertifikası açık konu olarak kalmaktadır.
+## Hızlı başlangıç
 
-> **Not (2 Ekim 2026):** Geliştirme bilgisayarında Smart App Control açıkken her yeniden paketleme EXE'nin parmak izini değiştirir ve Windows yeni dosyayı tanımadığı için engelleyebilir. Aynı anda paketlenen `arayuz.exe` çalışırken `motor.exe` "Uygulama Denetimi ilkesi bu dosyayı engelledi" hatasıyla engellendi; karar dosya bazında verildiği için önceden bilinemez. Kalıcı çözüm EXE'leri güvenilir bir kod imzalama sertifikasıyla imzalamaktır. Smart App Control kapatılmamalıdır; Windows'ta bir kez kapatılınca sistem sıfırlanmadan yeniden açılamaz. İmza gelene kadar geliştirme sırasında motor `python main.py` ile çalıştırılır.
+Gerçek kamera ya da gerçek M4 olmadan, kendi bilgisayarınızda uçtan uca denemek için:
 
-## 4. Kurulum klasörü
+1. **İndirin** — [Releases](../../releases/latest) sayfasından `MonitorOkuma-v1.0.0.zip`.
+2. **Açın** — ZIP'i `C:\MonitorOkuma` gibi bir klasöre çıkarın.
+3. **İlk çalıştırma** — `arayuz.exe`'yi açın. Windows imzasız uygulama uyarısı verirse
+   **Ek bilgi → Yine de çalıştır** deyin ([neden](#bilinen-sınırlar)).
+4. **Hesap açın** — ilk açılışta yönetici hesabı istenir.
+5. **Sahte kamera ve sahte M4'ü başlatın** — `araclar/` klasöründeki iki `.bat` dosyasına çift
+   tıklayın, pencerelerini açık bırakın.
+6. **Ayarları yükleyin** — `araclar/ayarlar.test.json` dosyasını `config/ayarlar.json` adıyla
+   kopyalayın, sonra `motor.exe`'yi çalıştırın.
 
-Beklenen kurulum yapısı aşağıdaki gibidir:
+Sahte M4 penceresinde `ALINDI TEST/K1/Y1 ...` satırlarını görmeye başlarsanız sistem uçtan uca
+çalışıyor demektir. Arada görünen `HTTP 503` uyarıları **bilerek** üretilir; tekrar deneme
+mantığını sınamak içindir.
+
+**Adım adım, ekran görüntüleriyle anlatım: [KURULUM.md](KURULUM.md)**
+
+## Klasör yapısı
 
 ```text
-C:\MonitorOkuma
-  motor.exe
-  arayuz.exe
-  _motor/
-  _arayuz/
-  config/
-    ayarlar.json
+monitor-okuma/
+├── main.py                  motor.exe'nin giriş noktası
+├── arayuz.py                arayuz.exe'nin giriş noktası
+├── src/                     ortak modüller (kamera, kuyruk, gönderim, arayüz sekmeleri…)
+├── tests/                   otomatik testler (pytest)
+├── araclar/                 sahte kamera + sahte M4 (yalnızca test; üründe kurulmaz)
+│   └── elle_denemeler/      projenin ilk günlerinden elle deneme betikleri
+├── config/
+│   └── ayarlar.ornek.json   ayar şablonu (sır içermez)
+├── docs/ekranlar/           README'deki ekran görüntüleri
+├── motor.spec, arayuz.spec  PyInstaller derleme reçeteleri
+├── requirements.txt         çalışma paketleri (sürümler sabit)
+└── requirements-dev.txt     + test ve paketleme araçları
 ```
 
-`_motor/` ve `_arayuz/` klasörleri programların çalışması için gereken bileşenleri içerir; silinmemeli veya taşınmamalıdır.
+Çalışırken oluşan ve **repoda bulunmayan** klasörler: `goruntuler/`, `veri/` (SQLite),
+`loglar/`, `durum.json`, `config/ayarlar.json`.
 
-Motor çalıştığında aşağıdaki çalışma klasörleri ve dosyalar oluşabilir:
-
-```text
-goruntuler/
-veri/
-  monitor.db
-loglar/
-durum.json
-```
-
-- `goruntuler/`: Çekilen görüntü dosyaları.
-- `veri/monitor.db`: SQLite veritabanı. `kayitlar` tablosu gönderim kuyruğunu ve geçmişini (durum: `bekliyor` / `gonderildi` / `hatali`), `olaylar` tablosu arıza, düzelme, gönderim uyarı/hataları ve motorun başlama/durma/ayar değişikliği olaylarını tutar. Motor ve arayüz aynı anda erişebilsin diye WAL modunda çalışır; motor çalışırken yanında `monitor.db-wal` ve `monitor.db-shm` dosyaları görülmesi normaldir, silinmemelidir.
-- `loglar/`: Günlük log dosyaları (olaylar ayrıca burada da yazılır).
-- `durum.json`: Motorun kamera durumlarını yazdığı dosya; arayüz kamera durumlarını buradan okur.
-
-Her görüntünün okunabilir bir kimliği vardır ve dosya adı bu kimliktir:
-
-- `kayit_id`: `<tesis>_<kamera>_<yatak>_<tarih>_<saat>_<sıra>`, örn. `H01_K1_Y1_2026-10-02_15-12-13_1`
-- `cift_id`: aynı çekimdeki iki kareyi bağlar, ilk karenin zamanıyla ve sırasız: `H01_K1_Y1_2026-10-02_15-12-13`
-- Aynı kimlik zaten varsa (örn. motor aynı saniyede yeniden başlarsa) sonuna `_2`, `_3` eklenir.
-
-Veritabanında zamanlar yerel saatle `2026-10-02 15:12:13` biçiminde, saat dilimi ayrı `saat_dilimi` sütununda (`+03:00`) tutulur. M4'e giden `zaman` alanı saat dilimli ISO biçimindedir (`2026-10-02T15:12:13+03:00`). Arayüz tarihleri `02.10.2026 15:12:13` biçiminde gösterir. Eski sürümün UUID'li kayıtları ve görüntü adları motor ilk açıldığında bu biçime çevrilir.
-
-Gönderilen kayıtlar `kayit_saklama_gun` ayarı kadar (varsayılan 90 gün) geçmişte tutulur, sonra temizlik tarafından silinir. Önceki sürümün `bekleyen/` ve `hatali/` klasörlerindeki JSON kayıtları, motor ilk açıldığında veritabanına aktarılır ve klasörler kaldırılır.
-
-> **Dikkat:** Veritabanı motor çalışırken bir SQLite programıyla incelenecekse **salt okunur** açılmalıdır. Düzenleme modunda açık bırakılan bir program veritabanını kilitler ve motor yeni kayıt ekleyemez.
-
-> **Önemli:** Şifreler Windows DPAPI ile o bilgisayara bağlı olarak şifrelenir. `ayarlar.json` başka bir bilgisayara kopyalanırsa şifreler çözülemez ve motor açılmaz. Yeni bilgisayarda `config/ayarlar.ornek.json` kopyalanıp adı `ayarlar.json` yapılmalı; API anahtarı ve kamera şifreleri o bilgisayardaki arayüzden girilmelidir.
-
-## 5. EXE oluşturma
-
-EXE'ler proje klasöründe, sanal ortam etkinken PyInstaller ile oluşturulur. Paketlemeden önce çalışan `motor.exe` ve `arayuz.exe` kapatılmalıdır; aksi halde dosyalar kilitli olduğu için üzerine yazılamaz.
-
-Motor:
+## Geliştiriciler için
 
 ```powershell
-pyinstaller --onedir --noconsole --name motor --contents-directory _motor --paths src --hidden-import win32crypt main.py
-```
-
-Arayüz:
-
-```powershell
-pyinstaller --onedir --noconsole --name arayuz --contents-directory _arayuz --paths src --hidden-import win32crypt arayuz.py
-```
-
-Seçeneklerin anlamı:
-
-- `--onedir`: Bileşenleri tek EXE içine gömmek yerine klasör olarak çıkarır (bkz. Bölüm 3).
-- `--noconsole`: Konsol penceresi açılmaz.
-- `--name`: Oluşacak EXE'nin adı.
-- `--contents-directory`: Bileşenlerin konulacağı klasörün adı; iki programın bileşenlerinin çakışmasını önler.
-- `--paths src`: `src` klasöründeki modüllerin bulunmasını sağlar.
-- `--hidden-import win32crypt`: PyInstaller'ın kendiliğinden bulamadığı DPAPI modülünü pakete ekler. (AVIF için ek bir şey gerekmez; Pillow 12 kendi destekler.)
-
-Çıktılar `dist\motor` ve `dist\arayuz` klasörlerinde oluşur. Bunlar kurulum klasörüne kopyalanır:
-
-```powershell
-xcopy /E /I /Y dist\motor C:\MonitorOkuma
-xcopy /E /I /Y dist\arayuz C:\MonitorOkuma
-```
-
-- `/E`: Alt klasörlerle birlikte kopyalar.
-- `/I`: Hedef yoksa klasör olarak oluşturur.
-- `/Y`: Var olan dosyaların üzerine sormadan yazar.
-
-Kopyalama `config/` klasörüne dokunmaz; mevcut ayarlar korunur.
-
-## 6. M4 bilgileri nereye girilecek?
-
-M4 bilgileri doğrudan Python koduna yazılmaz. Kullanıcı `arayuz.exe` programını açar ve `Ayarlar` sekmesinden gerekli bilgileri girer.
-
-Bu bölümde en az aşağıdaki yapılandırmalar bulunur:
-
-- Tesis kodu
-- M4 API adresi
-- API anahtarı
-- Çekim aralığı
-- İkinci çekim gecikmesi
-- Görüntü formatı
-- Görüntü kalitesi
-- Gönderilen görüntülerin silinme ayarı
-- Sahipsiz dosya saklama süresi
-- Gönderim kaydı saklama süresi
-
-M4 API'nin gerçek endpoint ve kimlik doğrulama bilgileri geldiğinde bunlar arayüzden girilmelidir. Mevcut gönderim formatı farklıysa yalnızca `src/gonderici.py` içindeki `_gonder` fonksiyonunun uyarlanması gerekebilir.
-
-## 7. Kamera bilgileri nereye girilecek?
-
-Kamera bilgileri de kod içine yazılmaz. `arayuz.exe` içindeki `Kameralar` sekmesinden kamera eklenir.
-
-Kamera eklerken şu bilgiler girilebilir:
-
-- Kamera kodu
-- Yatak kodu
-- Kamera tipi
-- Kamera adresi / IP
-- Kullanıcı adı
-- Şifre
-- Aktif/pasif durumu
-
-Kamera bağlantısı `Bağlantıyı test et` butonu ile kontrol edilir. Test başarılı olduğunda kameradan alınan görüntü görüntülenerek kontrol edilebilir. Gerçek IP kamera kullanılırken snapshot adresi kamera modeline göre belirlenmelidir.
-
-## 8. Uygulama nasıl çalıştırılır?
-
-### Geliştirme ortamında
-
-Proje klasörü: `C:\Projeler\monitor-okuma`
-
-İlk kurulumda sanal ortam oluşturulur ve paketler yüklenir:
-
-```powershell
-cd C:\Projeler\monitor-okuma
+git clone https://github.com/kayaturkkilayda/monitor-okuma.git
+cd monitor-okuma
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements-dev.txt
 ```
 
-- `requirements.txt`: Uygulamanın (motor ve arayüz) çalışması için gereken paketler, sürümleri sabitlenmiş.
-- `requirements-dev.txt`: Bunlara ek olarak geliştirme ve test araçları (pytest, sahte M4 için Flask, sahte SMTP için aiosmtpd, paketleme için PyInstaller). İlk satırı `-r requirements.txt` olduğu için tek komut ikisini birden kurar.
+| İş | Komut |
+|---|---|
+| Testler | `python -m pytest` |
+| Motoru çalıştır | `python main.py` |
+| Arayüzü çalıştır | `python arayuz.py` |
+| Sahte kamera | `python araclar\sahte_kamera.py` |
+| Sahte M4 | `python araclar\sahte_m4.py` |
+| EXE derle | `.\derle.ps1` |
 
-Testler sanal ortam etkinken `pytest` ile çalıştırılır.
+Python 3.11+ gerekir (geliştirme 3.14 ile yapıldı). Derleme ayrıntıları ve `--onedir`
+seçiminin nedeni için [PROJE_TANITIM.md](PROJE_TANITIM.md) dosyasına bakın.
 
-Sonraki çalışmalarda yalnızca sanal ortam etkinleştirilir:
+## Güvenlik
 
-```powershell
-cd C:\Projeler\monitor-okuma
-.venv\Scripts\activate
-```
+- **Şifreler diskte düz metin durmaz.** API anahtarı, SMTP şifresi ve kamera şifreleri Windows
+  DPAPI ile şifrelenir. Şifreleme o bilgisayara bağlıdır: `ayarlar.json` başka bir makineye
+  kopyalanırsa çözülemez, şifreler yeniden girilmelidir.
+- **Kullanıcı parolaları geri döndürülemez biçimde saklanır** (tuzlu özet). Hatalı giriş
+  denemesi sınırlıdır; aşılırsa hesap geçici olarak kilitlenir.
+- **Onaysız kamera çekim yapmaz.** Yeni eklenen kamera, e-postayla gelen 6 haneli kod girilene
+  kadar motorda çalışmaz. Böylece ayar dosyasına elle eklenen bir kamera sessizce devreye giremez.
+- **Yetki arayüzle sınırlı değildir.** Ayarlar ve Kullanıcılar sekmeleri yalnızca yöneticide
+  görünür; ayrıca kaydetme işlemi fonksiyon düzeyinde de yönetici kontrolü yapar.
+- **Kod, şifre ve anahtar hiçbir log, olay ya da e-posta mesajına yazılmaz.** Ayar değişikliği
+  loglanırken yalnızca değişen alanların *adları* yazılır, değerleri yazılmaz.
+- **Telefon yükleme sunucusu HTTP'dir ve varsayılan kapalıdır.** Açıldığında bilgisayar yerel
+  ağa bir port açar. Yalnızca güvenilen bir hastane ağında, geçici olarak açılmalıdır; internete
+  açık bir ağda kullanılmamalıdır.
+- **Sahte kamera ve sahte M4 araçları üründe kurulmaz.** Yalnızca yerel portları dinler, hiçbir
+  yere bağlantı açmazlar.
 
-Arka plan motoru için ayrı bir PowerShell penceresinde aşağıdaki komut çalıştırılır:
+## Bilinen sınırlar
 
-```powershell
-python main.py
-```
+- **EXE'ler imzalı değil.** Windows SmartScreen ilk çalıştırmada uyarır; **Ek bilgi → Yine de
+  çalıştır** ile geçilir. Smart App Control açık olan bilgisayarlarda imzasız EXE engellenebilir;
+  bu durumda Smart App Control **kapatılmamalı**, kurumsal kod imzalama sertifikası alınmalıdır.
+  EXE'lerin kendi ikonu da yoktur.
+- **Gerçek M4 API bilgisi yok.** Gönderim, sahte M4 (`araclar/sahte_m4.py`) ile doğrulanmıştır.
+  Gerçek endpoint'in istek biçimi farklıysa yalnızca `src/gonderici.py` içindeki `_gonder`
+  fonksiyonunun uyarlanması gerekir.
+- **Gerçek IP kamerayla denenmedi.** Geliştirme ve testler sahte kamera ile yapıldı. Gerçek
+  kameranın snapshot adresi modele göre değişir.
+- **Yalnızca Windows.** DPAPI şifreleme ve Görev Zamanlayıcı kurulumu Windows'a bağlıdır.
+- **Tek bilgisayar içindir.** Birden fazla makineye kurulup ortak veritabanı paylaşmak
+  tasarlanmadı.
 
-Arayüz için başka bir PowerShell penceresinde:
+---
 
-```powershell
-python arayuz.py
-```
-
-İlk çalıştırmada ayarlar arayüzden girilir; ardından motor kamera tanımlarını ve M4 ayarlarını `config/ayarlar.json` üzerinden kullanır.
-
-Test ortamında sahte kamera ve sahte M4 aşağıdaki komutlarla ayrı terminallerde başlatılabilir:
-
-```powershell
-python araclar\sahte_kamera.py
-```
-
-```powershell
-python araclar\sahte_m4.py
-```
-
-Ardından motor için `python main.py`, arayüz için ise `python arayuz.py` çalıştırılır.
-
-
-### Kurulu uygulamada
-
-1. `arayuz.exe` açılır.
-2. `Ayarlar` sekmesinden M4 bilgileri girilir.
-3. `Kameralar` sekmesinden kamera-yatak eşleştirmeleri eklenir ve bağlantılar test edilir.
-4. Ayarlar kaydedildikten sonra `motor.exe` çalıştırılır.
-5. Motor görüntüleri alır, yerelde kuyruklar ve yapılandırılmış M4 API'ye gönderir.
-
-Motor çalışırken arayüzde yapılan değişiklikleri 5 saniye içinde kendisi algılar; motoru yeniden başlatmaya gerek yoktur. Ayar dosyası hatalıysa motor eski ayarlarla çalışmaya devam eder.
-
-Kurulum klasörü `C:\MonitorOkuma` olduğunda çalıştırılabilir dosyalar şunlardır:
-
-```yaml
-C:\MonitorOkuma\motor.exe
-```
-
-```yaml
-C:\MonitorOkuma\arayuz.exe
-```
-
-`motor.exe` arka planda çalışır; pencere göstermemesi normaldir. `arayuz.exe` ise kullanıcı tarafından gerektiğinde açılır.
-
-## 9. Otomatik başlatma
-
-Windows Görev Zamanlayıcı kullanılarak `motor.exe`, bilgisayar açıldığında otomatik başlatılabilir. Görev adı `MonitorGoruntuMotor` olarak tanımlanabilir. Motor, kullanıcı oturum açmasını beklemeden çalışacak biçimde yapılandırılabilir.
-
-Görev, yönetici olarak açılmış bir PowerShell penceresinde aşağıdaki komutlarla oluşturulur:
-
-```powershell
-$eylem = New-ScheduledTaskAction -Execute "C:\MonitorOkuma\motor.exe" -WorkingDirectory "C:\MonitorOkuma"
-$tetik = New-ScheduledTaskTrigger -AtStartup
-$ayar  = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable
-Register-ScheduledTask -TaskName "MonitorGoruntuMotor" -Action $eylem -Trigger $tetik -Settings $ayar -User "SYSTEM" -RunLevel Highest -Force
-```
-
-- `-WorkingDirectory`: Motorun `config/`, `loglar/` ve diğer klasörleri kurulum klasöründe bulması için gereklidir.
-- `-AtStartup`: Görev bilgisayar açıldığında, oturum açılmasını beklemeden başlar.
-- `-ExecutionTimeLimit ([TimeSpan]::Zero)`: Görev için süre sınırı yoktur; motor sürekli çalışır.
-- `-RestartCount 999 -RestartInterval 1 dakika`: Motor kapanırsa her dakika yeniden başlatılmaya çalışılır.
-- `-StartWhenAvailable`: Başlangıç zamanı kaçırıldıysa görev ilk fırsatta başlatılır.
-- `-User "SYSTEM"`: Görev SYSTEM hesabıyla çalışır.
-- `-Force`: Aynı adlı görev varsa üzerine yazılır.
-
-## 10. Test ortamı
-
-Gerçek kamera ve gerçek M4 olmadan sistemi test etmek için `araclar/sahte_kamera.py` ve `araclar/sahte_m4.py` kullanılır.
-
-- Sahte kamera: `http://127.0.0.1:8080/<KOD>/shot.jpg`
-- Sahte M4: `http://127.0.0.1:9000/api/goruntu`
-
-Bu dosyalar yalnızca geliştirme ve test amacıyla kullanılır; gerçek kurulum paketinin parçası değildir.
-
-## 11. Gerçek ortama geçiş
-
-1. Gerçek M4 API adresi ve API anahtarı alınır.
-2. `arayuz.exe` içindeki `Ayarlar` bölümünden M4 bilgileri girilir.
-3. Gerçek IP kameraların IP, kullanıcı adı ve şifre bilgileri alınır.
-4. `arayuz.exe` içindeki `Kameralar` bölümünden kameralar eklenir.
-5. Kamera-yatak eşleşmeleri yapılır.
-6. `Bağlantıyı test et` ile görüntü kontrol edilir.
-7. Çekim aralığı gerçek kullanım değerine ayarlanır.
-8. `motor.exe` arka planda çalışacak şekilde kurulur.
-9. Windows Görev Zamanlayıcı ile otomatik başlatma yapılandırılır.
-
-## 12. Mevcut proje durumu
-
-- Kaynak kod hazır.
-- Python ortamında uygulama çalışıyor.
-- Sahte kamera ve sahte M4 ile test altyapısı mevcut.
-- Otomatik testler mevcut.
-- Git repository oluşturuldu.
-- İlk commit oluşturuldu.
-- GitHub repository oluşturuldu.
-- Remote tanımlandı ve mevcut commit GitHub'a gönderildi.
-- `--onedir` paketleme ile EXE'ler çalışıyor; hastane bilgisayarları için kod imzalama açık konu olarak kalıyor.
-- Gerçek kamera ve gerçek M4 bilgileri girildiğinde mevcut arayüz üzerinden yapılandırma yapılabilir.
+**Belgeler:** [KURULUM.md](KURULUM.md) (adım adım kurulum) ·
+[PROJE_TANITIM.md](PROJE_TANITIM.md) (mimari ve tasarım kararları) ·
+[araclar/README.txt](araclar/README.txt) (test araçları)

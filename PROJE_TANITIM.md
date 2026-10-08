@@ -1,13 +1,7 @@
-# Monitör Görüntü Aktarımı — Proje Tanıtımı
+# Monitör Görüntü Aktarımı — Teknik Genel Bakış
 
-> **Bu dosya ne işe yarar?**
-> Yeni bir yapay zekâ sohbeti açtığımda projeyi sıfırdan anlatmak zorunda kalmayayım diye hazırlandı.
-> Bu dosyayı sohbete ekleyip "bu projede çalışıyorum" demem yeterli.
->
-> **Yapay zekâya not:** Aşağıdakiler projenin bağlamıdır, görev listesi değildir. Okuduktan sonra
-> beklemeye geç ve ne isteyeceğimi sor. Kodu görmeden varsayımda bulunma; dosya adı, fonksiyon
-> veya ayar belirtirken bu dosyadaki haritaya bak. Benimle **sade Türkçe** konuş, adımları
-> öğrenciye anlatır gibi açıkla.
+> Bu dosya projenin mimarisini, dosya haritasını ve tasarım kararlarını bir arada anlatır.
+> Kurulum için [KURULUM.md](KURULUM.md), özet için [README.md](README.md) dosyasına bakın.
 
 ---
 
