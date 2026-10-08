@@ -122,13 +122,13 @@ EXE'ler proje klasöründe, sanal ortam etkinken PyInstaller ile oluşturulur. P
 Motor:
 
 ```powershell
-pyinstaller --onedir --noconsole --name motor --contents-directory _motor --paths src --hidden-import pillow_avif --hidden-import win32crypt main.py
+pyinstaller --onedir --noconsole --name motor --contents-directory _motor --paths src --hidden-import win32crypt main.py
 ```
 
 Arayüz:
 
 ```powershell
-pyinstaller --onedir --noconsole --name arayuz --contents-directory _arayuz --paths src --hidden-import pillow_avif --hidden-import win32crypt arayuz.py
+pyinstaller --onedir --noconsole --name arayuz --contents-directory _arayuz --paths src --hidden-import win32crypt arayuz.py
 ```
 
 Seçeneklerin anlamı:
@@ -138,7 +138,7 @@ Seçeneklerin anlamı:
 - `--name`: Oluşacak EXE'nin adı.
 - `--contents-directory`: Bileşenlerin konulacağı klasörün adı; iki programın bileşenlerinin çakışmasını önler.
 - `--paths src`: `src` klasöründeki modüllerin bulunmasını sağlar.
-- `--hidden-import pillow_avif`, `--hidden-import win32crypt`: PyInstaller'ın kendiliğinden bulamadığı AVIF desteği ve DPAPI modüllerini pakete ekler.
+- `--hidden-import win32crypt`: PyInstaller'ın kendiliğinden bulamadığı DPAPI modülünü pakete ekler. (AVIF için ek bir şey gerekmez; Pillow 12 kendi destekler.)
 
 Çıktılar `dist\motor` ve `dist\arayuz` klasörlerinde oluşur. Bunlar kurulum klasörüne kopyalanır:
 

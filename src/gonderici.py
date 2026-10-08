@@ -21,7 +21,8 @@ API_ALANLARI = ("kayit_id", "cift_id", "tesis_kodu", "kamera_kodu", "yatak_kodu"
 
 
 def kuyruga_ekle(dosya: Path, tesis: str, kamera: str, yatak: str,
-                 zaman: datetime, sira: int, cift_id: str, kayit_id: str) -> str:
+                 zaman: datetime, sira: int, cift_id: str, kayit_id: str,
+                 kaynak: str = "kamera", yukleyen: str | None = None) -> str:
     """Kaydı "bekliyor" durumuyla ekler, kayit_id döndürür.
 
     Zaman yerel saatle okunur biçimde, saat dilimi ayrı sütunda saklanır.
@@ -31,10 +32,11 @@ def kuyruga_ekle(dosya: Path, tesis: str, kamera: str, yatak: str,
     with baglan() as db:
         db.execute(
             "INSERT INTO kayitlar (kayit_id, cift_id, tesis_kodu, kamera_kodu, yatak_kodu,"
-            " cekim_zamani, saat_dilimi, sira, dosya_yolu, dosya_boyutu, durum, sonraki_deneme)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'bekliyor', ?)",
+            " cekim_zamani, saat_dilimi, sira, dosya_yolu, dosya_boyutu, durum, sonraki_deneme,"
+            " kaynak, yukleyen)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'bekliyor', ?, ?, ?)",
             (kayit_id, cift_id, tesis, kamera, yatak, cekim, saat_dilimi(zaman), sira,
-             str(dosya), Path(dosya).stat().st_size, cekim))
+             str(dosya), Path(dosya).stat().st_size, cekim, kaynak, yukleyen))
     return kayit_id
 
 

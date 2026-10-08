@@ -16,6 +16,7 @@ from gecis import eski_kuyrugu_aktar, kamera_sahiplerini_ata, veritabanini_gunce
 from gonderici import gonderici_dongusu
 from log import log_kur
 from onay import onayli_kameralar
+from telefon_sunucusu import sunucuyu_baslat
 from temizlik import temizlik_dongusu
 from veritabani import olay
 from zamanlayici import baslat
@@ -46,6 +47,11 @@ def calistir(ayarlar: dict):
                          name="temizlik", daemon=True)
     t.start()
     is_parcaciklari.append(t)
+
+    # Telefondan fotoğraf yükleme sunucusu; ayarlarda kapalıysa hiç açılmaz
+    telefon = sunucuyu_baslat(lambda: ayarlar, log, dur)
+    if telefon:
+        is_parcaciklari.append(telefon)
     return dur, is_parcaciklari
 
 

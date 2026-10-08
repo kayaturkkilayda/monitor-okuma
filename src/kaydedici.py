@@ -3,8 +3,7 @@ from datetime import datetime
 from pathlib import Path
 
 import cv2
-from PIL import Image
-import pillow_avif  # noqa: F401  AVIF desteğini Pillow'a ekler
+from PIL import Image      # AVIF desteği Pillow 12 ile birlikte gelir
 
 
 def goruntu_yolu(ad: str, yatak_kod: str, zaman: datetime,

@@ -6,6 +6,7 @@ from tkinter import messagebox, ttk
 
 from ayarlar import ayarlari_yaz, degisen_alanlar
 from eposta_bolumu import EpostaBolumu
+from telefon_sunucusu import VARSAYILAN_PORT as VARSAYILAN_TELEFON_PORT, sunucu_ayari
 from kullanicilar import alan_adi_listesi
 from veritabani import KAYIT_SAKLAMA_GUN, olay
 
@@ -141,17 +142,28 @@ class AyarSekmesi(ttk.Frame):
         ttk.Checkbutton(self, text="Gönderilen görüntüleri hemen sil",
                         variable=self.sil).grid(row=len(SATIRLAR) + 1, column=1, sticky="w", pady=5)
 
+        # Telefondan fotoğraf yükleme: varsayılan kapalı, çünkü bilgisayarı ağa açar
+        telefon = sunucu_ayari(ayarlar)
+        self.telefon_acik = tk.BooleanVar(value=telefon["acik"])
+        self.telefon_port = tk.StringVar(value=str(telefon["port"]))
+        kutu = ttk.Frame(self)
+        kutu.grid(row=len(SATIRLAR) + 2, column=1, sticky="w", pady=5)
+        ttk.Checkbutton(kutu, text="Telefondan fotoğraf yüklemeyi aç",
+                        variable=self.telefon_acik).pack(side="left")
+        ttk.Label(kutu, text="Port").pack(side="left", padx=(12, 4))
+        ttk.Entry(kutu, textvariable=self.telefon_port, width=7).pack(side="left")
+
         ttk.Button(self, text="Kaydet", command=self._kaydet).grid(
-            row=len(SATIRLAR) + 2, column=1, sticky="w", pady=(15, 0))
+            row=len(SATIRLAR) + 3, column=1, sticky="w", pady=(15, 0))
 
         # Bildirimler, ayarları kaydeden yöneticinin adresine gider; ayrıca sorulmaz
         self.eposta = EpostaBolumu(self, ayarlar.get("smtp"), self.oturum.get("eposta", ""))
-        self.eposta.grid(row=0, column=2, rowspan=len(SATIRLAR) + 3, sticky="nw", padx=(25, 0))
+        self.eposta.grid(row=0, column=2, rowspan=len(SATIRLAR) + 4, sticky="nw", padx=(25, 0))
 
         if not self.yonetici:
             salt_okunur_yap(self)
             ttk.Label(self, text=YETKI_YOK, foreground="#b00020").grid(
-                row=len(SATIRLAR) + 3, column=1, sticky="w", pady=(10, 0))
+                row=len(SATIRLAR) + 4, column=1, sticky="w", pady=(10, 0))
 
     def _dogrula(self):
         """(yeni ayarlar, None) ya da (None, hata mesajı) döndürür."""
@@ -185,7 +197,15 @@ class AyarSekmesi(ttk.Frame):
         if hata:
             return None, hata
 
-        return {**d, **sayilar, "gonderilince_sil": self.sil.get(), "smtp": smtp}, None
+        try:
+            port = int(self.telefon_port.get().strip() or VARSAYILAN_TELEFON_PORT)
+        except ValueError:
+            return None, "Telefon yükleme portu bir tam sayı olmalı."
+        if not 1024 <= port <= 65535:
+            return None, "Telefon yükleme portu 1024 ile 65535 arasında olmalı."
+
+        return {**d, **sayilar, "gonderilince_sil": self.sil.get(), "smtp": smtp,
+                "telefon_yukleme": {"acik": self.telefon_acik.get(), "port": port}}, None
 
     def _kaydet(self):
         if not self.yonetici:                 # düğme kapalı olsa da ikinci bir kontrol

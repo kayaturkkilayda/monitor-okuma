@@ -92,7 +92,8 @@ kuyruklanır, SMTP o an çalışmasa bile kaybolmaz.
 - **Python 3.14.2**, sanal ortam `.venv` içinde
 - **Tkinter** (ttk) — arayüz; ek GUI kütüphanesi yok
 - **OpenCV + NumPy** — kameradan görüntü alma
-- **Pillow + pillow-avif-plugin** — görüntü sıkıştırma (AVIF)
+- **Pillow** — görüntü sıkıştırma (AVIF desteği Pillow 12 ile hazır gelir)
+- **pillow-heif** — iPhone fotoğrafları (HEIC) için
 - **requests** — M4 API'ye gönderim
 - **pywin32** — Windows DPAPI ile şifreleme
 - **SQLite** (Python'un kendi `sqlite3`'ü) — veritabanı, WAL modunda
@@ -289,8 +290,8 @@ düşmesin, her yeni özellik için test yaz.**
 ### EXE paketleme
 
 ```powershell
-pyinstaller --onedir --noconsole --name motor  --contents-directory _motor  --paths src --hidden-import pillow_avif --hidden-import win32crypt main.py
-pyinstaller --onedir --noconsole --name arayuz --contents-directory _arayuz --paths src --hidden-import pillow_avif --hidden-import win32crypt arayuz.py
+pyinstaller --onedir --noconsole --name motor  --contents-directory _motor  --paths src --hidden-import win32crypt main.py
+pyinstaller --onedir --noconsole --name arayuz --contents-directory _arayuz --paths src --hidden-import win32crypt arayuz.py
 ```
 
 - `--onedir` şart: `--onefile` her açılışta geçici klasöre açtığı için güvenlik yazılımları
