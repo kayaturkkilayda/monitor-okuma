@@ -34,6 +34,7 @@ alınır ve artan aralıklarla yeniden denenir; hiçbir çekim kaybolmaz.
 | **Kamera sahipliği** | Kamerayı ekleyen kişi onun sahibidir. Normal kullanıcı yalnızca kendi kameralarını, kayıtlarını ve loglarını görür; yönetici hepsini görür. |
 | **Arıza bildirimi** | Kamera üst üste yanıt vermezse e-posta gider; düzelince ikinci bir e-posta gelir. |
 | **Telefonla fotoğraf** | Yatak başındaki QR kod okutularak telefondan fotoğraf yüklenebilir. Varsayılan **kapalı**. |
+| **Tek program açarsınız** | Yalnızca *Monitör Görüntü Aktarımı*'nı açarsınız; arka plan motorunu o başlatır. Pencereyi kapatınca motor çalışmaya devam eder. |
 | **Otomatik temizlik** | Gönderilen görüntüler ve eski kayıtlar ayarlanan süre sonunda silinir. |
 | **Yerel test ortamı** | Gerçek kamera ve gerçek M4 olmadan uçtan uca denenebilir ([araclar/](araclar/)). |
 
@@ -66,8 +67,16 @@ yapmaya devam eder.
 - **`motor.exe`** — penceresi yoktur, arka planda sürekli çalışır. Kameralardan görüntü çeker,
   diske kaydeder, kuyruğa alır, M4'e gönderir, başarısız olanı tekrar dener, eski dosyaları
   temizler ve arıza e-postalarını yollar. Görev Zamanlayıcı ile açılışta başlatılır.
-- **`arayuz.exe`** — kullanıcı gerektiğinde açar. Ayar girişi, kamera ekleme/düzenleme, bağlantı
-  testi, kamera durumu, gönderim kayıtları ve olay günlüğü buradadır.
+- **`arayuz.exe`** — kullanıcının açtığı tek program (masaüstünde *Monitör Görüntü Aktarımı*).
+  Ayar girişi, kamera ekleme/düzenleme, bağlantı testi, kamera durumu, gönderim kayıtları ve
+  olay günlüğü buradadır.
+
+**Motoru arayüz yönetir.** Arayüz açılınca motorun çalışıp çalışmadığına bakar; çalışmıyorsa
+penceresiz başlatır, çalışıyorsa ikinci kopya açmaz. İkisi ayrı süreç olduğu için **arayüzü
+kapatmak motoru durdurmaz** — görüntü çekimi sürer. Üst çubuktaki gösterge durumu söyler
+(*Motor çalışıyor ●* / *Motor durdu ●*); yöneticiler oradaki düğmeyle elle başlatıp
+durdurabilir. Ayarlar'daki **"Bilgisayar açılınca motoru başlat"** kutusu işaretlenirse motor
+siz hiçbir şey açmadan da başlar.
 
 Motor, ayar dosyasındaki değişikliği 5 saniye içinde kendisi fark eder; yeniden başlatmak
 gerekmez. Ayar dosyası bozuksa eski ayarlarla çalışmayı sürdürür.
@@ -93,7 +102,7 @@ gerekmez. Ayar dosyası bozuksa eski ayarlarla çalışmayı sürdürür.
 
 Gerçek kamera ya da gerçek M4 olmadan, kendi bilgisayarınızda uçtan uca denemek için:
 
-1. **İndirin** — [Releases](../../releases/latest) sayfasından `MonitorOkuma-v1.0.0.zip`.
+1. **İndirin** — [Releases](../../releases/latest) sayfasından en son `MonitorOkuma-*.zip`.
 2. **Açın** — ZIP'i `C:\MonitorOkuma` gibi bir klasöre çıkarın.
 3. **İlk çalıştırma** — `arayuz.exe`'yi açın. Windows imzasız uygulama uyarısı verirse
    **Ek bilgi → Yine de çalıştır** deyin ([neden](#bilinen-sınırlar)).
@@ -101,7 +110,7 @@ Gerçek kamera ya da gerçek M4 olmadan, kendi bilgisayarınızda uçtan uca den
 5. **Sahte kamera ve sahte M4'ü başlatın** — `araclar/` klasöründeki iki `.bat` dosyasına çift
    tıklayın, pencerelerini açık bırakın.
 6. **Ayarları yükleyin** — `araclar/ayarlar.test.json` dosyasını `config/ayarlar.json` adıyla
-   kopyalayın, sonra `motor.exe`'yi çalıştırın.
+   kopyalayın. Motoru ayrıca çalıştırmanız gerekmez; arayüz onu kendisi başlatır.
 
 Sahte M4 penceresinde `ALINDI TEST/K1/Y1 ...` satırlarını görmeye başlarsanız sistem uçtan uca
 çalışıyor demektir. Arada görünen `HTTP 503` uyarıları **bilerek** üretilir; tekrar deneme

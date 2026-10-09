@@ -193,7 +193,9 @@ def _ust_yazi(uyg):
 
 def test_ana_pencerede_kullanici_adi_ve_cikis(uygulama):
     uyg = uygulama(KULLANICI)
-    assert _ust_yazi(uyg) == ["Çıkış", "Ayşe (ayse@akgun.com.tr)"]
+    # Üst çubuk: motor göstergesi solda, kullanıcı ve Çıkış sağda
+    assert _ust_yazi(uyg)[:2] == ["Çıkış", "Ayşe (ayse@akgun.com.tr)"]
+    assert _ust_yazi(uyg)[2].startswith("Motor ")
     # Yalnızca yönetici görür: SMTP, M4/API anahtarı ve izin verilen alan adları Ayarlar'da
     assert _sekme_adlari(uyg) == ["Kameralar", "Kayıtlar", "Loglar"]
     assert not hasattr(uyg, "ayar_sekmesi") and not hasattr(uyg, "kullanicilar_sekmesi")
@@ -202,6 +204,7 @@ def test_ana_pencerede_kullanici_adi_ve_cikis(uygulama):
 def test_yonetici_ayarlar_ve_kullanicilar_sekmelerini_gorur(uygulama):
     uyg = uygulama(YONETICI)
     assert _ust_yazi(uyg)[1] == "Yönetici (admin@akgun.com.tr) · Yönetici"
+    assert _ust_yazi(uyg)[2].startswith("Motor ")
     assert _sekme_adlari(uyg) == ["Kameralar", "Kayıtlar", "Loglar", "Ayarlar", "Kullanıcılar"]
 
 
@@ -221,3 +224,120 @@ def test_cikista_bekleyen_yenileme_iptal_edilir(uygulama):
     uyg.after_cancel = lambda kimlik: (iptal_edilen.append(kimlik), asil_iptal(kimlik))
     uyg._cikis()
     assert iptal_edilen == [bekleyen]
+
+
+# ---------- Motor göstergesi ve yönetici denetimi ----------
+
+def _motor_etiketi(uyg):
+    return uyg.motor_etiketi.cget("text")
+
+
+def test_motor_calisiyorken_yesil_gosterge(uygulama, monkeypatch):
+    import motor_denetim
+    monkeypatch.setattr(motor_denetim, "calisiyor_mu", lambda: True)
+    uyg = uygulama(KULLANICI)
+    uyg._motor_durumunu_yenile()
+    assert _motor_etiketi(uyg) == "Motor çalışıyor ●"
+    assert str(uyg.motor_etiketi.cget("foreground")) == arayuz_modulu().MOTOR_CALISIYOR_RENGI
+
+
+def test_motor_durdugunda_kirmizi_gosterge(uygulama, monkeypatch):
+    import motor_denetim
+    monkeypatch.setattr(motor_denetim, "calisiyor_mu", lambda: False)
+    uyg = uygulama(KULLANICI)
+    uyg._motor_durumunu_yenile()
+    assert _motor_etiketi(uyg) == "Motor durdu ●"
+    assert str(uyg.motor_etiketi.cget("foreground")) == arayuz_modulu().MOTOR_DURDU_RENGI
+
+
+def arayuz_modulu():
+    import arayuz
+    return arayuz
+
+
+def test_baslat_durdur_dugmesi_yalnizca_yoneticide(uygulama):
+    assert uygulama(KULLANICI).motor_dugmesi is None          # normal kullanıcıda yok
+    assert uygulama(YONETICI).motor_dugmesi is not None
+
+
+def test_dugme_yazisi_duruma_gore_degisir(uygulama, monkeypatch):
+    import motor_denetim
+    uyg = uygulama(YONETICI)
+    monkeypatch.setattr(motor_denetim, "calisiyor_mu", lambda: True)
+    uyg._motor_durumunu_yenile()
+    assert uyg.motor_dugmesi.cget("text") == "Durdur"
+    monkeypatch.setattr(motor_denetim, "calisiyor_mu", lambda: False)
+    uyg._motor_durumunu_yenile()
+    assert uyg.motor_dugmesi.cget("text") == "Başlat"
+
+
+def test_yonetici_olmayan_motoru_durduramaz(uygulama, monkeypatch):
+    """Düğme hiç gösterilmez; gösterilse bile işlem reddedilir."""
+    import motor_denetim
+    hatalar = []
+    monkeypatch.setattr(arayuz_modulu().messagebox, "showerror",
+                        lambda *a, **k: hatalar.append(a))
+    monkeypatch.setattr(motor_denetim, "durdur_iste",
+                        lambda: pytest.fail("durdurma istenmemeliydi"))
+    uyg = uygulama(KULLANICI)
+    uyg.motor_dugmesi = None
+    uyg._motor_dugmesine_basildi()
+    assert hatalar and "Yetki yok" in hatalar[0][0]
+
+
+def test_arayuz_acilinca_motor_kapaliysa_baslatilir(monkeypatch):
+    """Kullanıcı yalnızca arayüzü açar; motoru arayüz başlatır."""
+    import arayuz
+    import motor_denetim
+    monkeypatch.setattr(arayuz, "ayarlari_oku", lambda: dict(TEMEL))
+    monkeypatch.setattr(arayuz, "durumlari_oku", lambda: {})
+    monkeypatch.setattr(motor_denetim, "calisiyor_mu", lambda: False)
+    cagrildi = []
+    monkeypatch.setattr(motor_denetim, "baslat", lambda log=None: cagrildi.append(True) or True)
+    from conftest import tk_ac
+    uyg = tk_ac(lambda: arayuz.Uygulama(YONETICI, LOG))
+    try:
+        uyg.withdraw()
+        assert cagrildi == [True]
+        assert any("Motor arayüzden başlatıldı" in o["mesaj"] for o in olaylar())
+    finally:
+        uyg.destroy()
+
+
+def test_motor_zaten_calisiyorsa_ikinci_kopya_acilmaz(monkeypatch):
+    import arayuz
+    import motor_denetim
+    monkeypatch.setattr(arayuz, "ayarlari_oku", lambda: dict(TEMEL))
+    monkeypatch.setattr(arayuz, "durumlari_oku", lambda: {})
+    monkeypatch.setattr(motor_denetim, "calisiyor_mu", lambda: True)
+    # baslat() çalışıyorsa False döner; arayüz bunu olay olarak yazmamalı
+    monkeypatch.setattr(motor_denetim, "baslat", lambda log=None: False)
+    from conftest import tk_ac
+    uyg = tk_ac(lambda: arayuz.Uygulama(YONETICI, LOG))
+    try:
+        uyg.withdraw()
+        assert not any("Motor arayüzden başlatıldı" in o["mesaj"] for o in olaylar())
+    finally:
+        uyg.destroy()
+
+
+def test_motor_baslarken_durdu_yazmaz(monkeypatch):
+    """Motor açılana kadar birkaç saniye geçer; bu arada 'durdu' demek yanıltıcı olur."""
+    import arayuz
+    import motor_denetim
+    monkeypatch.setattr(arayuz, "ayarlari_oku", lambda: dict(TEMEL))
+    monkeypatch.setattr(arayuz, "durumlari_oku", lambda: {})
+    monkeypatch.setattr(motor_denetim, "calisiyor_mu", lambda: False)   # henüz hazır değil
+    monkeypatch.setattr(motor_denetim, "baslat", lambda log=None: True)
+    from conftest import tk_ac
+    uyg = tk_ac(lambda: arayuz.Uygulama(YONETICI, LOG))
+    try:
+        uyg.withdraw()
+        assert uyg.motor_etiketi.cget("text") == "Motor başlatılıyor…"
+        assert "disabled" in uyg.motor_dugmesi.state()
+        # Motor hazır olunca gösterge gerçeği söyler
+        monkeypatch.setattr(motor_denetim, "calisiyor_mu", lambda: True)
+        uyg._motorun_acilmasini_bekle()
+        assert uyg.motor_etiketi.cget("text") == "Motor çalışıyor ●"
+    finally:
+        uyg.destroy()

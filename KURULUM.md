@@ -42,9 +42,10 @@ indirin; kurulum ekranında **"Add python.exe to PATH"** kutusunu mutlaka işare
 
 ## 2. İndirme
 
-1. Tarayıcıda projenin **Releases** sayfasını açın.
-2. En üstteki sürümün altındaki **Assets** başlığına tıklayın.
-3. `MonitorOkuma-v1.0.0.zip` dosyasına tıklayıp indirin (yaklaşık 200 MB).
+1. Tarayıcıda projenin **Releases** sayfasını açın. Doğrudan en son sürüm:
+   `https://github.com/kayaturkkilayda/monitor-okuma/releases/latest`
+2. Sürümün altındaki **Assets** başlığına tıklayın.
+3. `MonitorOkuma-...zip` dosyasına tıklayıp indirin (yaklaşık 165 MB).
 
 İndirme bittiğinde dosya genelde `C:\Users\<kullanıcı adınız>\Downloads` klasöründe olur.
 
@@ -54,7 +55,7 @@ indirin; kurulum ekranında **"Add python.exe to PATH"** kutusunu mutlaka işare
 
 ZIP'i doğrudan içinden çalıştırmayın; önce dışarı çıkarmanız gerekir.
 
-1. İndirilen `MonitorOkuma-v1.0.0.zip` dosyasına **sağ tıklayın**.
+1. İndirilen `MonitorOkuma-...zip` dosyasına **sağ tıklayın**.
 2. **Tümünü ayıkla...** seçeneğini tıklayın.
 3. Açılan pencerede hedef klasörü silip şunu yazın:
 
@@ -72,7 +73,7 @@ Açma bitince `C:\MonitorOkuma` klasöründe şunları görmelisiniz:
 
 ```text
 C:\MonitorOkuma\
-  motor.exe          ← arka planda çalışan program (penceresi yoktur)
+  motor.exe          ← arka planda çalışan program; SİZ AÇMAZSINIZ, arayüz başlatır
   arayuz.exe         ← ayarları girdiğiniz program
   _motor\            ← motor.exe'nin parçaları
   _arayuz\           ← arayuz.exe'nin parçaları
@@ -104,6 +105,27 @@ için Windows onu tanımıyor. Devam etmek için:
 2. Alt kısımda beliren **Yine de çalıştır** düğmesine basın.
 
 Bunu yalnızca **bir kez** yapmanız yeterlidir; Windows aynı dosyayı bir daha sormaz.
+
+### Masaüstü kısayolu
+
+Her seferinde klasöre girmemek için `arayuz.exe` dosyasına **sağ tıklayın → Kısayol oluştur**,
+oluşan kısayolu masaüstüne taşıyın ve adını **Monitör Görüntü Aktarımı** yapın.
+
+> Masaüstüne **yalnızca bu kısayolu** koyun. `motor.exe` için kısayol gerekmez: motoru arayüz
+> kendisi başlatır. Yanlışlıkla motoru elle açmaya çalışmak karışıklık yaratır.
+
+### Motor kendiliğinden başlar
+
+Arayüz açılınca arka plan motorunun çalışıp çalışmadığına bakar ve gerekiyorsa penceresiz
+başlatır. Pencerenin üst solunda durumu görürsünüz:
+
+- **Motor çalışıyor ●** (yeşil) — görüntü çekimi sürüyor
+- **Motor durdu ●** (kırmızı) — çekim yapılmıyor
+
+Yönetici hesabıyla girdiyseniz göstergenin yanında bir **Başlat / Durdur** düğmesi de olur.
+
+**Arayüzü kapatmak motoru durdurmaz.** İkisi ayrı programdır; pencereyi kapatsanız da görüntü
+çekimi ve M4'e gönderim arka planda sürer. Bu normaldir ve istenen davranıştır.
 
 > ### Smart App Control açıksa
 >
@@ -240,10 +262,15 @@ Aynı klasörde ikinci dosyaya çift tıklayın:
 > **Dikkat:** `config\ayarlar.json` zaten varsa üzerine yazılır. Kendi ayarlarınızı girdiyseniz
 > önce bir yedeğini alın.
 
-### 7.4 Motoru çalıştırın
+### 7.4 Motoru yeniden başlatın
 
-`C:\MonitorOkuma\motor.exe` dosyasına çift tıklayın. **Penceresi açılmaz** — bu normaldir,
-motor arka planda çalışır.
+Motor zaten çalışıyor olabilir; yeni ayarları almak için bir kez durdurup başlatın:
+
+- Yönetici hesabıyla girdiyseniz üstteki **Durdur** düğmesine, sonra **Başlat**'a basın.
+- Yönetici değilseniz arayüzü kapatıp yeniden açmanız yeterlidir.
+
+Motor **penceresiz** çalışır; ekranda bir şey görünmemesi normaldir. Çalıştığını üstteki
+*Motor çalışıyor ●* göstergesinden anlarsınız.
 
 ### 7.5 Çalıştığını nasıl anlarsınız
 
@@ -276,7 +303,8 @@ Bu bir **arıza değildir**. Sahte M4, gelen isteklerin yaklaşık %20'sine bile
 
 ### 7.7 Denemeyi bitirme
 
-1. Görev Yöneticisi'ni açın (Ctrl + Shift + Esc), **motor.exe**'yi bulup **Görevi sonlandır** deyin.
+1. Yönetici hesabıyla üstteki **Durdur** düğmesine basın. (Yönetici değilseniz Görev
+   Yöneticisi'nden — Ctrl + Shift + Esc — **motor.exe**'yi bulup sonlandırabilirsiniz.)
 2. İki siyah komut penceresini kapatın.
 3. Deneme sırasında oluşan `veri\`, `loglar\`, `goruntuler\` klasörleri ve `durum.json` dosyası
    silinebilir.
@@ -292,7 +320,8 @@ Kamera takılamayan bir yatak için, telefonla fotoğraf çekip sisteme yükleye
 
 1. **Ayarlar** sekmesinde **"Telefondan fotoğraf yüklemeyi aç"** kutusunu işaretleyin.
 2. Port alanını `8099` olarak bırakın.
-3. **Kaydet**'e basın ve `motor.exe`'yi yeniden başlatın.
+3. **Kaydet**'e basın, sonra üstteki **Durdur** ve **Başlat** düğmeleriyle motoru yeniden
+   başlatın (yönetici değilseniz arayüzü kapatıp açın).
 
 **Kullanmak için:**
 
@@ -310,28 +339,34 @@ ayrıca giriş istenir.
 
 ## 9. Otomatik başlatma
 
-Motorun bilgisayar her açıldığında kendiliğinden başlaması için Windows Görev Zamanlayıcı
-kullanılır.
+Normalde buna gerek yoktur: **Monitör Görüntü Aktarımı**'nı her açtığınızda motor
+kendiliğinden başlar. Ama bilgisayar açılır açılmaz, kimse pencereyi açmasa bile çekimin
+başlamasını istiyorsanız:
 
-1. Başlat menüsüne `PowerShell` yazın.
-2. **Windows PowerShell**'e sağ tıklayıp **Yönetici olarak çalıştır** deyin.
-3. Aşağıdaki dört satırı kopyalayıp yapıştırın ve Enter'a basın:
+1. **Ayarlar** sekmesini açın (yalnızca yöneticide görünür).
+2. **"Bilgisayar açılınca motoru başlat"** kutusunu işaretleyin.
+3. **Kaydet**'e basın.
 
-```powershell
-$eylem = New-ScheduledTaskAction -Execute "C:\MonitorOkuma\motor.exe" -WorkingDirectory "C:\MonitorOkuma"
-$tetik = New-ScheduledTaskTrigger -AtStartup
-$ayar  = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable
-Register-ScheduledTask -TaskName "MonitorGoruntuMotor" -Action $eylem -Trigger $tetik -Settings $ayar -User "SYSTEM" -RunLevel Highest -Force
-```
+Bu kadar. **Yönetici izni istemez.** Arka planda, kullanıcınızın Başlangıç klasörüne motor
+için bir kısayol konur; Windows her oturum açılışında onu çalıştırır.
 
-Son satırdan sonra görev adını içeren bir çıktı görürseniz kurulum tamamdır. Motor bundan sonra
-bilgisayar açılışında, kimse oturum açmasa bile başlar; kapanırsa her dakika yeniden denenir.
+Kapatmak için aynı kutunun işaretini kaldırıp **Kaydet**'e basın.
 
-**Kaldırmak için** (yine yönetici PowerShell'de):
+> **Kısayolu elle görmek isterseniz:** Windows tuşu + R, `shell:startup` yazıp Enter.
+> Açılan klasörde *Monitör Görüntü Aktarımı — Motor* kısayolunu görürsünüz.
+
+### Eskiden Görev Zamanlayıcı kullanılıyordu
+
+Önceki sürümlerde motor, yönetici yetkisiyle oluşturulan bir Görev Zamanlayıcı göreviyle
+(`MonitorGoruntuMotor`) SYSTEM hesabında başlatılıyordu. Buna artık gerek yok. Böyle bir
+görev kurduysanız kaldırabilirsiniz — yönetici olarak açılmış bir PowerShell'de:
 
 ```powershell
 Unregister-ScheduledTask -TaskName "MonitorGoruntuMotor" -Confirm:$false
 ```
+
+Kaldırmazsanız da sorun çıkmaz: arayüz, SYSTEM hesabında çalışan motoru görür ve ikinci bir
+kopya açmaz.
 
 ---
 
@@ -345,7 +380,26 @@ Smart App Control açık. [Bölüm 4'teki uyarıya](#4-i̇lk-çalıştırma-ve-w
 `_arayuz\` klasörünün `arayuz.exe` ile aynı yerde durduğundan emin olun. ZIP'i açarken yalnızca
 EXE dosyaları kopyalandıysa program açılmaz.
 
-### `motor.exe` çalışıyor ama hiç görüntü gelmiyor
+### Üstte "Motor durdu ●" yazıyor
+
+- Yönetici hesabıyla girdiyseniz yanındaki **Başlat** düğmesine basın.
+- Düğme "Başlatılıyor…" deyip kırmızıda kalıyorsa `motor.exe` dosyası `arayuz.exe` ile aynı
+  klasörde değildir, ya da Windows onu engellemiştir
+  ([bölüm 4](#4-i̇lk-çalıştırma-ve-windows-uyarısı)).
+- Göstergenin güncellenmesi birkaç saniye sürebilir; arayüz durumu 5 saniyede bir yeniler.
+
+### Arayüzü kapatınca motor da duruyor mu?
+
+Durmaz. İkisi ayrı programdır; pencereyi kapattıktan sonra da çekim sürer. Emin olmak için
+arayüzü yeniden açın: üstte *Motor çalışıyor ●* yazmalı ve **Kayıtlar** sekmesinde arada
+geçen süreye ait yeni kayıtlar görünmelidir.
+
+### İki motor birden çalışır mı?
+
+Hayır. Motor açılırken Windows'a kendini kaydeder; ikinci bir kopya bunu görüp hemen kapanır.
+Arayüzü iki kez açsanız da tek motor çalışır.
+
+### Motor çalışıyor ama hiç görüntü gelmiyor
 - **Kameralar** sekmesinde kamera "Onay bekliyor" durumunda olabilir. Onaysız kamera çekim
   yapmaz. Kamerayı seçip **Onay kodunu gir** düğmesini kullanın (kod e-postanıza gelir).
 - Kamera "Pasif" olabilir: kamerayı düzenleyip **Aktif** kutusunu işaretleyin.

@@ -25,6 +25,7 @@ from giris_ekrani import GirisEkrani
 from kayitlar_sekmesi import KayitlarSekmesi
 from kullanicilar_sekmesi import KullanicilarSekmesi
 from log import log_kur
+import motor_denetim
 import tema
 import oturum as oturum_deposu
 from loglar_sekmesi import LoglarSekmesi
@@ -38,6 +39,10 @@ from zaman import ekran_zamani
 
 DURUM_DOSYASI = Path("durum.json")
 YENILEME_MS = 5000
+
+# Motor durum göstergesi: yeşil = çekim sürüyor, kırmızı = motor kapalı, görüntü alınmıyor
+MOTOR_CALISIYOR_RENGI = "#15603a"
+MOTOR_DURDU_RENGI = "#b00020"
 
 DURUM_YAZISI = {"calisiyor": "Çalışıyor", "arizali": "Arızalı", "yanit_yok": "Yanıt yok",
                 "onay_bekliyor": "Onay bekliyor", "pasif": "Pasif", "bilinmiyor": "Bilinmiyor"}
@@ -262,6 +267,7 @@ class Uygulama(tk.Tk):
         ttk.Button(ust, text="Çıkış", command=self._cikis).pack(side="right")
         rol = " · Yönetici" if oturum.get("yonetici") else ""
         ttk.Label(ust, text=f"{oturum['ad']} ({oturum['eposta']}){rol}").pack(side="right", padx=10)
+        self._motor_gostergesini_kur(ust)
 
         sekmeler = ttk.Notebook(self)
         sekmeler.pack(fill="both", expand=True, padx=10, pady=(4, 10))
@@ -298,7 +304,97 @@ class Uygulama(tk.Tk):
         for ad in sekmeler.tabs():
             tema.genisligi_sinirla(self.nametowidget(ad))
 
+        # Kullanıcı yalnızca bu pencereyi açar; motoru arayüz başlatır. Motor AYRI bir
+        # süreçtir: bu pencere kapanınca çalışmaya devam eder.
+        self._motoru_gerekirse_baslat()
+        self._motor_durumunu_yenile()
         self._periyodik_yenile()
+
+    # ---------- Motor ----------
+
+    def _motor_gostergesini_kur(self, ust):
+        """Üstte "Motor çalışıyor ●" göstergesi; Başlat/Durdur yalnızca yöneticide."""
+        self._motor_aciliyor = False     # True iken gösterge "başlatılıyor"da kalır
+        self.motor_etiketi = ttk.Label(ust, text="Motor denetleniyor…")
+        self.motor_etiketi.pack(side="left")
+        self.motor_dugmesi = None
+        if self.oturum.get("yonetici"):
+            self.motor_dugmesi = ttk.Button(ust, text="Durdur", width=9,
+                                            command=self._motor_dugmesine_basildi)
+            self.motor_dugmesi.pack(side="left", padx=(10, 0))
+
+    def _motoru_gerekirse_baslat(self):
+        """Motor kapalıysa penceresiz başlatır; açıksa ikinci kopya açmaz."""
+        try:
+            if motor_denetim.baslat(self.log):
+                olay(self.log, "INFO", "sistem",
+                     f"Motor arayüzden başlatıldı — {self.oturum['eposta']}")
+                self._motorun_acilmasini_bekle()
+        except Exception:
+            olay(self.log, "ERROR", "sistem", "Motor başlatılamadı", ayrinti=True)
+
+    def _motorun_acilmasini_bekle(self, kalan: int = 20):
+        """Yeni başlayan motor kendini kaydedene kadar göstergede 'başlatılıyor' yazar.
+
+        Süreç açıldıktan sonra motorun hazır olması bir iki saniye sürer. Bu arada normal
+        yenileme "Motor durdu" derdi; kullanıcı başlattığı şeyin çalışmadığını sanırdı.
+        """
+        if not self.winfo_exists():                  # pencere kapandıysa bırak
+            return
+        if kalan <= 0 or motor_denetim.calisiyor_mu():
+            self._motor_aciliyor = False
+            self._motor_durumunu_yenile()
+            return
+        self._motor_aciliyor = True
+        self.motor_etiketi.config(text="Motor başlatılıyor…", foreground=tema.GRI)
+        if self.motor_dugmesi:
+            self.motor_dugmesi.config(state="disabled")
+        self._motor_bekleme = self.after(500, lambda: self._motorun_acilmasini_bekle(kalan - 1))
+
+    def _motor_durumunu_yenile(self):
+        if self._motor_aciliyor:
+            return                       # bekleme döngüsü göstergeyi yönetiyor
+        calisiyor = motor_denetim.calisiyor_mu()
+        self.motor_etiketi.config(
+            text=("Motor çalışıyor ●" if calisiyor else "Motor durdu ●"),
+            foreground=(MOTOR_CALISIYOR_RENGI if calisiyor else MOTOR_DURDU_RENGI))
+        if self.motor_dugmesi:
+            self.motor_dugmesi.config(text="Durdur" if calisiyor else "Başlat", state="normal")
+
+    def _motor_dugmesine_basildi(self):
+        """Yöneticinin Başlat/Durdur düğmesi. İş bitene kadar düğme kapalı kalır."""
+        if not self.oturum.get("yonetici"):          # arayüzden bağımsız ikinci kontrol
+            messagebox.showerror("Yetki yok", "Motoru yalnızca yöneticiler başlatıp durdurabilir.")
+            return
+        calisiyor = motor_denetim.calisiyor_mu()
+        if calisiyor and not messagebox.askyesno(
+                "Motoru durdur",
+                "Motor durdurulsun mu?\n\nDurduğunda kamera görüntüsü çekilmez ve "
+                "M4'e gönderim yapılmaz.", parent=self):
+            return
+        self.motor_dugmesi.config(state="disabled",
+                                  text="Durduruluyor…" if calisiyor else "Başlatılıyor…")
+        eposta = self.oturum["eposta"]
+
+        def is_parcaciginda():
+            if calisiyor:
+                motor_denetim.durdur()
+            else:
+                motor_denetim.baslat(self.log)
+            return calisiyor
+
+        def bitti(_sonuc):
+            # İşlem yarıda kalmış olabilir; log satırı tahmine değil gerçek duruma dayansın
+            su_an = motor_denetim.calisiyor_mu()
+            if su_an != calisiyor:
+                olay(self.log, "INFO", "sistem",
+                     f"Motor arayüzden {'başlatıldı' if su_an else 'durduruldu'} — {eposta}")
+            else:
+                olay(self.log, "WARNING", "sistem",
+                     f"Motor {'durdurulamadı' if calisiyor else 'başlatılamadı'} — {eposta}")
+            self._motor_durumunu_yenile()
+
+        arka_planda(self, is_parcaciginda, bitti)
 
     # ---------- Liste ----------
 
@@ -345,11 +441,15 @@ class Uygulama(tk.Tk):
 
     def _periyodik_yenile(self):
         self._listeyi_doldur()
+        self._motor_durumunu_yenile()
         self._zamanlayici = self.after(YENILEME_MS, self._periyodik_yenile)
 
     def destroy(self):
         # Çıkışta pencere kapanırken bekleyen yenileme iptal edilir; yoksa kapanmış pencereyi yenilemeye çalışır
         self.after_cancel(self._zamanlayici)
+        bekleme = getattr(self, "_motor_bekleme", None)   # motor açılışını bekleyen sayaç
+        if bekleme:
+            self.after_cancel(bekleme)
         super().destroy()
 
     # ---------- Düğmeler ----------

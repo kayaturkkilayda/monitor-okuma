@@ -40,3 +40,33 @@ def tk_kok():
     kok.withdraw()
     yield kok
     kok.destroy()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def motor_surecleri_kapali():
+    """Testler ASLA gerçek motor süreci başlatmasın.
+
+    Uygulama penceresi açılınca motoru kendisi başlatır. Test içinde bu, arka planda
+    gerçek motor süreçleri bırakır: repoya veri/log yazarlar ve test bitince de
+    çalışmaya devam ederler. Bir kez başımıza geldi; pytest 4 motor açtı.
+
+    Oturum kapsamı şart: test_arayuz_onay.py gibi dosyalarda pencereyi kuran fixture
+    module kapsamlı ve fonksiyon kapsamlı bir korumadan ÖNCE çalışıyor.
+    """
+    import motor_denetim
+    with pytest.MonkeyPatch.context() as yama:
+        yama.setattr(motor_denetim, "baslat", lambda log=None: False)
+        yama.setattr(motor_denetim, "durdur", lambda bekle_sn=20.0: True)
+        yield
+
+
+@pytest.fixture(autouse=True)
+def motor_dosyalari_gecici(monkeypatch, tmp_path):
+    """Kalp atışı, durdurma isteği ve Başlangıç kısayolu geçici klasöre gitsin.
+
+    Gerçek repo ve kullanıcının Başlangıç klasörü testlerden etkilenmemeli.
+    """
+    import motor_denetim
+    monkeypatch.setattr(motor_denetim, "KALP_DOSYASI", tmp_path / "veri" / "motor.calisiyor")
+    monkeypatch.setattr(motor_denetim, "DUR_DOSYASI", tmp_path / "veri" / "motor.dur")
+    monkeypatch.setattr(motor_denetim, "baslangic_klasoru", lambda: tmp_path / "Baslangic")

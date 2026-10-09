@@ -15,6 +15,7 @@ from durum import KameraDurumu
 from gecis import eski_kuyrugu_aktar, kamera_sahiplerini_ata, veritabanini_guncelle
 from gonderici import gonderici_dongusu
 from log import log_kur
+import motor_denetim
 from onay import onayli_kameralar
 from telefon_sunucusu import sunucuyu_baslat
 from temizlik import temizlik_dongusu
@@ -68,6 +69,14 @@ def degisim_zamani() -> float | None:
         return None
 
 
+# Arayüz motoru kendisi başlatır; iki arayüz aynı anda açılırsa ikinci motor olmamalı.
+# Mutex'i Windows süreç bitince kendiliğinden bırakır, bayat kilit kalmaz.
+if not motor_denetim.mutexi_al():
+    log.info("Motor zaten çalışıyor; bu kopya kapanıyor")
+    sys.exit(0)
+motor_denetim.durdurma_istegini_temizle()   # önceki oturumdan kalan istek bizi kapatmasın
+motor_denetim.kalp_at()
+
 olay(log, "INFO", "sistem", "Motor başladı")
 try:
     veritabanini_guncelle(log)
@@ -87,6 +96,10 @@ dur, is_parcaciklari = calistir(ayarlar)
 try:
     while True:
         time.sleep(KONTROL_SN)
+        motor_denetim.kalp_at()              # arayüz "Motor çalışıyor" diyebilsin
+        if motor_denetim.durdurma_istendi_mi():
+            olay(log, "INFO", "sistem", "Motor arayüzden durduruldu")
+            break
         simdiki = degisim_zamani()
         if simdiki is None or simdiki == son_degisim:
             continue
@@ -110,6 +123,10 @@ try:
 
 except KeyboardInterrupt:
     olay(log, "INFO", "sistem", "Motor durduruluyor...")
+
+finally:
     durdur(dur, is_parcaciklari)
     bildirici.durdur()
+    motor_denetim.durdurma_istegini_temizle()
+    motor_denetim.kalbi_sil()
     olay(log, "INFO", "sistem", "Motor durduruldu")

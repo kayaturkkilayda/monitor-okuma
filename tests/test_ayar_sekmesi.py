@@ -29,3 +29,60 @@ def test_kayit_saklama_gecersiz_deger_reddedilir(kok, deger):
     yeni, hata = sekme._dogrula()
     assert yeni is None
     assert "Gönderim kaydı saklama" in hata
+
+
+# ---------- Bilgisayar açılınca motoru başlat ----------
+
+def test_acilista_baslat_kutusu_mevcut_durumu_gosterir(kok, monkeypatch):
+    import motor_denetim
+    monkeypatch.setattr(motor_denetim, "acilista_basliyor_mu", lambda: True)
+    assert AyarSekmesi(kok, dict(TEMEL), YONETICI).acilista.get() is True
+    monkeypatch.setattr(motor_denetim, "acilista_basliyor_mu", lambda: False)
+    assert AyarSekmesi(kok, dict(TEMEL), YONETICI).acilista.get() is False
+
+
+def test_kaydedince_kisayol_olusturulur(kok, monkeypatch):
+    import ayar_sekmesi
+    import motor_denetim
+    monkeypatch.setattr(ayar_sekmesi, "ayarlari_yaz", lambda *a, **k: None)
+    monkeypatch.setattr(ayar_sekmesi.messagebox, "showinfo", lambda *a, **k: None)
+    monkeypatch.setattr(motor_denetim, "acilista_basliyor_mu", lambda: False)
+    istekler = []
+    monkeypatch.setattr(motor_denetim, "acilista_baslat",
+                        lambda acik, log=None: istekler.append(acik) or True)
+    sekme = AyarSekmesi(kok, dict(TEMEL), YONETICI)
+    sekme.acilista.set(True)
+    sekme._kaydet()
+    assert istekler == [True]           # kapalıdan açığa geçti
+
+
+def test_degismediyse_kisayola_dokunulmaz(kok, monkeypatch):
+    """Her kaydetmede kısayolu yeniden yazmak gereksiz."""
+    import ayar_sekmesi
+    import motor_denetim
+    monkeypatch.setattr(ayar_sekmesi, "ayarlari_yaz", lambda *a, **k: None)
+    monkeypatch.setattr(ayar_sekmesi.messagebox, "showinfo", lambda *a, **k: None)
+    monkeypatch.setattr(motor_denetim, "acilista_basliyor_mu", lambda: True)
+    monkeypatch.setattr(motor_denetim, "acilista_baslat",
+                        lambda acik, log=None: pytest.fail("dokunulmamalıydı"))
+    sekme = AyarSekmesi(kok, dict(TEMEL), YONETICI)
+    sekme.acilista.set(True)            # zaten açık
+    sekme._kaydet()
+
+
+def test_kisayol_yazilamazsa_diger_ayarlar_yine_kaydedilir(kok, monkeypatch):
+    import ayar_sekmesi
+    import motor_denetim
+    yazilan = []
+    monkeypatch.setattr(ayar_sekmesi, "ayarlari_yaz", lambda a, *r, **k: yazilan.append(a))
+    monkeypatch.setattr(ayar_sekmesi.messagebox, "showinfo", lambda *a, **k: None)
+    uyarilar = []
+    monkeypatch.setattr(ayar_sekmesi.messagebox, "showwarning",
+                        lambda *a, **k: uyarilar.append(a))
+    monkeypatch.setattr(motor_denetim, "acilista_basliyor_mu", lambda: False)
+    monkeypatch.setattr(motor_denetim, "acilista_baslat", lambda acik, log=None: False)
+    sekme = AyarSekmesi(kok, dict(TEMEL), YONETICI)
+    sekme.acilista.set(True)
+    sekme._kaydet()
+    assert yazilan                      # ayarlar yine de kaydedildi
+    assert uyarilar                     # ama kullanıcı uyarıldı

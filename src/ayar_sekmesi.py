@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from ayarlar import ayarlari_yaz, degisen_alanlar
+import motor_denetim
 import tema
 from eposta_bolumu import EpostaBolumu
 from telefon_sunucusu import VARSAYILAN_PORT as VARSAYILAN_TELEFON_PORT, sunucu_ayari
@@ -174,6 +175,13 @@ class AyarSekmesi(ttk.Frame):
         ttk.Entry(kutu, textvariable=self.telefon_port, width=7).grid(
             row=1, column=1, sticky="w", pady=(4, 0))
 
+        # Windows açılışında motoru başlat. Ayar dosyasında tutulmaz; doğrunun kaynağı
+        # Başlangıç klasöründeki kısayolun kendisidir. Oraya yazmak yönetici izni istemez.
+        self.acilista = tk.BooleanVar(value=motor_denetim.acilista_basliyor_mu())
+        ttk.Checkbutton(genel, text="Bilgisayar açılınca motoru başlat",
+                        variable=self.acilista).grid(row=len(SATIRLAR) + 3, column=1,
+                                                     sticky="w", pady=(8, 2))
+
         # Bildirimler, ayarları kaydeden yöneticinin adresine gider; ayrıca sorulmaz
         self.eposta = EpostaBolumu(self.govde, ayarlar.get("smtp"), self.oturum.get("eposta", ""))
         self.eposta.grid(row=0, column=1, sticky="nsew")
@@ -239,6 +247,14 @@ class AyarSekmesi(ttk.Frame):
         eski = copy.deepcopy(self.ayarlar)
         self.ayarlar.update(yeni)
         ayarlari_yaz(self.ayarlar)
+        # Açılışta başlatma ayar dosyasında değil, Başlangıç klasöründe tutulur
+        acilista = self.acilista.get()
+        if acilista != motor_denetim.acilista_basliyor_mu():
+            if not motor_denetim.acilista_baslat(acilista, self.log):
+                messagebox.showwarning(
+                    "Ayarlanamadı",
+                    "Diğer ayarlar kaydedildi, ancak \"Bilgisayar açılınca motoru başlat\" "
+                    "ayarlanamadı. Başlangıç klasörüne yazılamamış olabilir.")
         # Yalnızca değişen ayarların adları yazılır; değerleri (şifreler dahil) yazılmaz
         degisen = ", ".join(degisen_alanlar(eski, self.ayarlar)) or "değişiklik yok"
         if self.log:
