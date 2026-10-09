@@ -86,3 +86,26 @@ def test_kisayol_yazilamazsa_diger_ayarlar_yine_kaydedilir(kok, monkeypatch):
     sekme._kaydet()
     assert yazilan                      # ayarlar yine de kaydedildi
     assert uyarilar                     # ama kullanıcı uyarıldı
+
+
+def test_goruntu_formati_secenekleri(kok):
+    """jpg ve jpeg aynı biçimdir; M4 'jpeg' beklediği için ikisi de seçilebilmeli."""
+    import ayar_sekmesi
+    sekme = AyarSekmesi(kok, dict(TEMEL), YONETICI)
+    from tkinter import ttk
+    genel = next(c for c in sekme.govde.winfo_children() if isinstance(c, ttk.LabelFrame))
+    kutu = next(c for c in genel.winfo_children()
+                if c.winfo_class() == "TCombobox"
+                and str(c.cget("textvariable")) == str(sekme.degerler["format"]))
+    assert list(kutu.cget("values")) == ["avif", "jpg", "jpeg"] == ayar_sekmesi.FORMATLAR
+
+
+def test_jpeg_secilince_kaydedilir(kok, monkeypatch):
+    import ayar_sekmesi
+    yazilan = []
+    monkeypatch.setattr(ayar_sekmesi, "ayarlari_yaz", lambda a, *r, **k: yazilan.append(dict(a)))
+    monkeypatch.setattr(ayar_sekmesi.messagebox, "showinfo", lambda *a, **k: None)
+    sekme = AyarSekmesi(kok, dict(TEMEL), YONETICI)
+    sekme.degerler["format"].set("jpeg")
+    sekme._kaydet()
+    assert yazilan and yazilan[0]["format"] == "jpeg"

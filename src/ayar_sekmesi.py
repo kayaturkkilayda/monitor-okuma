@@ -28,6 +28,10 @@ SATIRLAR = [
     ("kayit_saklama_gun", "Gönderim kaydı saklama (gün)", "metin"),
 ]
 
+# Görüntü formatı seçenekleri. jpg ve jpeg aynı biçimdir, yalnızca dosya uzantısı değişir;
+# M4 "jpeg" beklediği için ikisi de sunulur.
+FORMATLAR = ["avif", "jpg", "jpeg"]
+
 # Eski ayar dosyalarında olmayan alanlar için ekranda gösterilecek değer
 VARSAYILANLAR = {"kayit_saklama_gun": KAYIT_SAKLAMA_GUN}
 
@@ -145,7 +149,7 @@ class AyarSekmesi(ttk.Frame):
             ttk.Label(genel, text=etiket).grid(row=i, column=0, sticky="w", pady=2, padx=(0, 15))
             deger = tk.StringVar(value=str(ayarlar.get(ad, VARSAYILANLAR.get(ad, ""))))
             if tur == "secim":
-                alan = ttk.Combobox(genel, textvariable=deger, values=["avif", "jpg"],
+                alan = ttk.Combobox(genel, textvariable=deger, values=FORMATLAR,
                                     state="readonly", width=20)
             else:
                 alan = ttk.Entry(genel, textvariable=deger, width=20,
