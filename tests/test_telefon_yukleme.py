@@ -378,3 +378,80 @@ def test_kapaliyken_sunucu_baslatilmaz():
     import threading
     assert ts.sunucuyu_baslat(lambda: {"telefon_yukleme": {"acik": False}},
                               SahteLog(), threading.Event()) is None
+
+
+# ---------- HEIC eklentisi yüklenemezse motor durmamalı ----------
+#
+# 9 Ekim 2026: Windows Smart App Control, pillow-heif'in native DLL'ini engelledi.
+# yukleme.py o sırada import anında register_heif_opener() çağırıyordu; main.py bu
+# modülü loglama kurulmadan ÖNCE içe aktardığı için motor.exe hiçbir iz bırakmadan
+# kapandı (çıkış kodu 1, log dosyası bile oluşmadı). HEIC isteğe bağlı bir ektir;
+# yokluğu motoru durdurmamalı.
+
+def test_heic_eklentisi_yoksa_modul_yine_de_yuklenir(monkeypatch):
+    """pillow_heif import'u patlasa bile yukleme modülü içe aktarılabilmeli."""
+    import builtins
+    import importlib
+    import sys
+
+    gercek_import = builtins.__import__
+
+    def engelli_import(ad, *a, **kw):
+        if ad == "pillow_heif":
+            raise ImportError("DLL load failed while importing _pillow_heif: "
+                              "Uygulama Denetimi ilkesi bu dosyayı engelledi.")
+        return gercek_import(ad, *a, **kw)
+
+    monkeypatch.setattr(builtins, "__import__", engelli_import)
+    monkeypatch.delitem(sys.modules, "yukleme", raising=False)
+    monkeypatch.delitem(sys.modules, "pillow_heif", raising=False)
+
+    yeniden = importlib.import_module("yukleme")           # patlamamalı
+    assert yeniden.HEIC_DESTEGI is False
+    assert "HEIF" not in yeniden.IZINLI_BICIMLER           # açamayacağı biçimi kabul etmez
+    assert {"JPEG", "PNG"} <= yeniden.IZINLI_BICIMLER      # JPEG/PNG çalışmaya devam eder
+
+    # Temizlik gerekmez: monkeypatch hem __import__'u hem sys.modules girdilerini
+    # test bitince kendisi geri yükler.
+
+
+def test_motorun_import_zinciri_heic_olmadan_da_kurulur(monkeypatch):
+    """main.py'nin zinciri: telefon_sunucusu -> yukleme. Hiçbiri import anında patlamamalı."""
+    import builtins
+    import importlib
+    import sys
+
+    gercek_import = builtins.__import__
+
+    def engelli_import(ad, *a, **kw):
+        if ad == "pillow_heif":
+            raise ImportError("engellendi")
+        return gercek_import(ad, *a, **kw)
+
+    monkeypatch.setattr(builtins, "__import__", engelli_import)
+    for m in ("yukleme", "telefon_sunucusu", "pillow_heif"):
+        monkeypatch.delitem(sys.modules, m, raising=False)
+
+    ts = importlib.import_module("telefon_sunucusu")       # motorun 19. satırı bunu yapar
+    assert ts.HEIC_DESTEGI is False
+    assert hasattr(ts, "sunucuyu_baslat")
+
+    # Temizliği monkeypatch yapar (yukarıdaki nota bakın).
+
+
+def test_heic_destegi_yokken_gelen_heic_anlasilir_hata_verir(monkeypatch):
+    """Kullanıcı neden reddedildiğini ve ne yapacağını öğrenmeli."""
+    import yukleme
+    monkeypatch.setattr(yukleme, "IZINLI_BICIMLER", {"JPEG", "PNG", "MPO"})
+
+    class SahteGoruntu:
+        format = "HEIF"
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def load(self): pass
+
+    monkeypatch.setattr(yukleme.Image, "open", lambda *a, **k: SahteGoruntu())
+    with pytest.raises(yukleme.YuklemeHatasi) as hata:
+        yukleme.goruntuyu_coz(b"x" * 100)
+    assert "HEIC" in str(hata.value)
+    assert "JPEG" in str(hata.value)        # ne yapacağı söylenir

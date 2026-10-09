@@ -14,18 +14,30 @@ from datetime import datetime
 
 import cv2
 import numpy as np
-import pillow_heif
 from PIL import Image, UnidentifiedImageError
 
 from gonderici import kuyruga_ekle
 from kaydedici import goruntu_yolu, kaydet
 from kimlik import yeni_cift_kimligi, yeni_kayit_kimligi
 
-pillow_heif.register_heif_opener()      # iPhone fotoğrafları (HEIC) için
+# iPhone fotoğrafları (HEIC) için. Eklentinin native DLL'i yüklenemezse motor DURMAMALI:
+# bu modül main.py'de loglama kurulmadan önce içe aktarılır, orada çıkan bir hata motoru
+# hiçbir iz bırakmadan kapatır. HEIC isteğe bağlı bir ek: telefondan yükleme zaten
+# varsayılan kapalı ve kapalı değilken de JPEG/PNG çalışmaya devam eder.
+# Gerçek örnek: Windows Smart App Control _pillow_heif.pyd dosyasını engelledi ve
+# motor.exe sessizce açılmaz oldu (9 Ekim 2026).
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+    HEIC_DESTEGI = True
+except Exception:                       # ImportError, OSError, eklentinin kendi hataları
+    HEIC_DESTEGI = False
 
 KAYNAK = "telefon"
 EN_BUYUK_BAYT = 15 * 1024 * 1024        # 15 MB
-IZINLI_BICIMLER = {"JPEG", "PNG", "HEIF", "MPO"}    # MPO: bazı telefonların çoklu JPEG'i
+# HEIF yalnızca eklenti yüklendiyse kabul edilir; yoksa Pillow onu zaten açamaz
+IZINLI_BICIMLER = ({"JPEG", "PNG", "MPO"}           # MPO: bazı telefonların çoklu JPEG'i
+                   | ({"HEIF"} if HEIC_DESTEGI else set()))
 EN_BUYUK_KENAR = 4096                   # çok büyük fotoğraf küçültülür
 
 # Hız sınırı: aynı kişi + yatak için bu pencerede en fazla bu kadar yükleme
@@ -56,6 +68,10 @@ def goruntuyu_coz(veri: bytes) -> np.ndarray:
         with Image.open(BytesIO(veri)) as goruntu:
             bicim = goruntu.format
             if bicim not in IZINLI_BICIMLER:
+                if bicim == "HEIF":      # eklenti yüklenemedi; neden olduğu söylenir
+                    raise YuklemeHatasi("Bu bilgisayarda HEIC desteği açılamadı. "
+                                        "Telefonunuzun kamera ayarından 'En Uyumlu' (JPEG) "
+                                        "biçimini seçip yeniden deneyin.")
                 raise YuklemeHatasi("Yalnızca JPEG, PNG ve HEIC fotoğraf gönderilebilir.")
             goruntu.load()                       # bozuk dosya burada hata verir
             duz = goruntu.convert("RGB")

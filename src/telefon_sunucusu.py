@@ -21,7 +21,8 @@ import sahiplik
 import telefon_oturum
 from kullanicilar import KullaniciHatasi, giris as kullanici_girisi
 from veritabani import olay
-from yukleme import EN_BUYUK_BAYT, Sinirlayici, YuklemeHatasi, fotografi_al
+from yukleme import (EN_BUYUK_BAYT, HEIC_DESTEGI, Sinirlayici, YuklemeHatasi,
+                     fotografi_al)
 
 VARSAYILAN_PORT = 8099
 GIRIS_PENCERE_SN = 300
@@ -266,6 +267,10 @@ def sunucuyu_baslat(ayarlari_getir, log, dur: threading.Event) -> threading.Thre
                  ayrinti=True)
             return
         olay(log, "INFO", "sistem", f"Telefon yükleme sunucusu açıldı (port {ayar['port']})")
+        if not HEIC_DESTEGI:    # sessizce eksik kalmasın; iPhone'dan HEIC gelirse reddedilecek
+            olay(log, "WARNING", "sistem",
+                 "HEIC desteği açılamadı (pillow-heif yüklenemedi); "
+                 "iPhone fotoğrafları yalnızca JPEG biçiminde kabul edilir")
 
         # Durdurma bayrağı gelince serve_forever'dan çıkılır; istek beklenmez
         def kapatmayi_bekle():
