@@ -18,16 +18,18 @@ from zaman import db_zamani, saat_dilimi, simdi
 BEKLEME_SN = [10, 30, 60, 300, 900]
 
 # Tekrar denemenin düzeltemeyeceği hatalar; kayıt "hatali" olarak kuyruktan çıkar.
-# 401/403 ayrıca ele alınır (anahtar hatası, e-posta gider).
-KALICI_HATA = {400, 401, 403, 404, 413, 422}
+# 4xx "istek yanlış" demektir: aynı isteği tekrar göndermek aynı cevabı verir.
+# Yalnızca 5xx ve zaman aşımı tekrar denenir. 401/403 ayrıca ele alınır (anahtar hatası).
+KALICI_HATA = {400, 401, 403, 404, 413, 415, 422}
 YETKI_HATASI = {401, 403}
+BASARILI = {200, 201}        # 201 yeni kayıt, 200 bu captureId daha önce alınmış
 
 TUR_BASINA_KAYIT = 100
 
 # M4 gövdesindeki alan adları birebir böyledir; değiştirilmemeli.
 M4_FORMATI = "jpeg"                 # ayar avif olsa bile M4'e jpeg gider
 JPEG_KALITESI = 90
-ZAMAN_BICIMI = "%Y-%m-%dT%H:%M:%S"  # sonuna .mmm eklenir, saat dilimi eki YOKTUR
+YANIT_OZETI_UZUNLUGU = 200          # yanıt gövdesinden loga en çok bu kadar karakter
 
 AYAR_EKSIK = "M4 adresi/anahtarı ayarlanmamış"
 
@@ -86,13 +88,16 @@ def _guncelle(kayit_id: str, **alanlar):
                    (*alanlar.values(), kayit_id))
 
 
-def m4_zamani(cekim_zamani: str, ms: int) -> str:
-    """Veritabanındaki yerel saat + milisaniye → M4'ün beklediği biçim.
+def m4_zamani(cekim_zamani: str, ms: int, dilim: str = "") -> str:
+    """Veritabanındaki yerel saat + milisaniye + saat dilimi → M4'ün beklediği biçim.
 
-    "2026-10-09 07:48:43" + 650 → "2026-10-09T07:48:43.650"
-    Yerel saattir; M4 bu alanda saat dilimi eki beklemez.
+    "2026-10-09 07:48:43" + 650 + "+03:00" → "2026-10-09T07:48:43.650+03:00"
+
+    Backend ISO-8601'in offset'li biçimini bekler. Saat dilimi kayıttan gelir (çekim
+    anında bu bilgisayarın dilimi neyse o); kodda sabit bir ülke/dilim yoktur.
+    Biçim burada tek yerde durur: backend farklı bir biçim isterse yalnızca burası değişir.
     """
-    return f"{cekim_zamani.replace(' ', 'T')}.{int(ms) % 1000:03d}"
+    return f"{cekim_zamani.replace(' ', 'T')}.{int(ms) % 1000:03d}{dilim}"
 
 
 def jpeg_base64(dosya: Path) -> str:
@@ -111,20 +116,45 @@ def jpeg_base64(dosya: Path) -> str:
 
 
 def m4_govdesi(kayit, kamera_id: int, dosya: Path) -> dict:
-    """M4'e gönderilecek JSON gövdesi. Alan adları birebir böyledir."""
+    """M4'e gönderilecek JSON gövdesi. Alan adları birebir böyledir.
+
+    okumaGrupId: aynı çift çekimin iki karesini birbirine bağlar; bizdeki cift_id budur.
+    Backend bu alanı başka bir şey bekliyorsa (ör. UUID) yalnızca bu satır değişir.
+    """
     return {
         "captureId": kayit["capture_id"],
         "kameraKodu": kayit["kamera_kodu"],
         "kameraId": int(kamera_id),
         "yatakEslesmeKodu": kayit["yatak_kodu"],
-        "goruntuCekilmeZamani": m4_zamani(kayit["cekim_zamani"], kayit["cekim_ms"]),
+        "goruntuCekilmeZamani": m4_zamani(kayit["cekim_zamani"], kayit["cekim_ms"],
+                                          kayit["saat_dilimi"]),
+        "okumaGrupId": kayit["cift_id"],
         "goruntuFormati": M4_FORMATI,
         "goruntuBase64": jpeg_base64(dosya),
     }
 
 
-def _gonder(ayarlar: dict, govde: dict) -> int:
-    """Kullanıcının girdiği adrese AYNEN POST eder; koda yol ya da anahtar yazılmaz."""
+def yanit_ozeti(yanit) -> str:
+    """Yanıt gövdesinden loga yazılacak kısa özet.
+
+    Gövde kısaltılır; gönderdiğimiz base64 ya da anahtar hiçbir koşulda loga girmez
+    (zaten yanıtta olmaz, ama uzunluk sınırı kazara sızmayı da engeller).
+    """
+    try:
+        metin = yanit.text or ""
+    except Exception:
+        return ""
+    metin = " ".join(metin.split())
+    return metin[:YANIT_OZETI_UZUNLUGU]
+
+
+def _gonder(ayarlar: dict, govde: dict) -> tuple[int, str]:
+    """Kullanıcının girdiği adrese AYNEN POST eder; koda yol ya da anahtar yazılmaz.
+
+    (HTTP kodu, yanıt özeti) döndürür. json= kullanılır: Content-Type'ı requests'in
+    kendisi application/json yapar, ayrıca açıkça da yazılır. Gövdeyi multipart olarak
+    göndermek Spring'in @RequestBody ucundan 415 alır.
+    """
     yanit = requests.post(
         ayarlar["api_url"],
         headers={"X-Api-Key": ayarlar["api_key"],
@@ -132,7 +162,7 @@ def _gonder(ayarlar: dict, govde: dict) -> int:
         json=govde,
         timeout=30,
     )
-    return yanit.status_code
+    return yanit.status_code, yanit_ozeti(yanit)
 
 
 def _tekrar_dene(kayit_id: str, deneme: int, neden: str | None = None) -> tuple[int, int]:
@@ -189,31 +219,38 @@ def _kaydi_isle(kayit_id: str, ayarlar: dict, log, bildirici=None):
 
     # Gönderim sırasında veritabanı kilitli tutulmaz; sonuç ayrı ve tek bir güncellemeyle yazılır
     try:
-        kod = _gonder(ayarlar, govde)
+        kod, ozet = _gonder(ayarlar, govde)
         neden = f"HTTP {kod}"
     except requests.RequestException as e:
-        kod, neden = None, type(e).__name__
+        kod, ozet, neden = None, "", type(e).__name__
 
-    if kod is not None and 200 <= kod < 300:
+    if kod in BASARILI:
+        # 201 = yeni kayıt, 200 = bu captureId zaten alınmış (tekrar gönderim). İkisi de başarı;
+        # 200'de de kuyruktan çıkarılır, yoksa aynı görüntü sonsuza kadar tekrar gönderilir.
         # Önce kayıt işaretlenir, sonra görüntü silinir. Arada kesilirse görüntü sahipsiz kalır,
         # temizlik onu sonra siler; tersi olsaydı kuyrukta dosyası olmayan kayıt kalırdı.
         _guncelle(kayit_id, durum="gonderildi", gonderim_zamani=simdi())
         if ayarlar.get("gonderilince_sil", True):
             Path(kayit["dosya_yolu"]).unlink(missing_ok=True)
-        log.info(f"{etiket} | gönderildi")
+        zaten = " (daha önce alınmış)" if kod == 200 else ""
+        log.info(f"{etiket} | gönderildi{zaten}" + (f" — {ozet}" if ozet else ""))
     elif kod in YETKI_HATASI:
         # Anahtar yanlışsa tekrar denemek düzeltmez; yöneticinin Ayarlar'dan düzeltmesi gerekir
         _guncelle(kayit_id, durum="hatali", deneme=kayit["deneme"] + 1, son_hata=neden)
-        olay(log, "ERROR", kaynak, f"{etiket} | API anahtarı hatalı ({neden})")
+        olay(log, "ERROR", kaynak,
+             f"{etiket} | API anahtarı hatalı ({neden})" + (f" — {ozet}" if ozet else ""))
         if bildirici:
             bildirici.hata_olayi("m4_hata", kaynak,
                                  _hata_anahtari("api anahtari", datetime.now()),
                                  "M4 API anahtarı kabul edilmedi. Ayarlar sekmesinden "
                                  "doğru anahtarı girin.")
     elif kod in KALICI_HATA:
-        # 400: gövde M4'ün beklediği biçimde değil. Tekrar denemek aynı sonucu verir.
+        # 400 gövde yanlış, 415 içerik türü yanlış, 404 adres yanlış. Hiçbiri tekrar
+        # denemeyle düzelmez; yanıttaki hata mesajı loga yazılır ki sebebi görülsün.
         _guncelle(kayit_id, durum="hatali", deneme=kayit["deneme"] + 1, son_hata=neden)
-        olay(log, "ERROR", kaynak, f"{etiket} | kalıcı hata ({neden}), hatalı olarak işaretlendi")
+        olay(log, "ERROR", kaynak,
+             f"{etiket} | kalıcı hata ({neden}), tekrar denenmeyecek"
+             + (f" — {ozet}" if ozet else ""))
         if bildirici and kod != 400:
             bildirici.hata_olayi("m4_hata", kaynak, _hata_anahtari(neden, datetime.now()),
                                  f"{etiket} gönderilemedi: {neden}")

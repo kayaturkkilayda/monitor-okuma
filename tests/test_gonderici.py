@@ -77,12 +77,12 @@ def ortam(tmp_path):
     return kayit_id, goruntu, SahteLog(), tmp_path
 
 
-def api_cevabi(monkeypatch, kod=None, hata=None):
+def api_cevabi(monkeypatch, kod=None, hata=None, ozet=""):
     """Gerçek gönderim yerine sabit bir cevap döndüren sahte fonksiyon koyar."""
     def sahte_gonder(ayarlar, govde):
         if hata:
             raise hata
-        return kod
+        return kod, ozet
     monkeypatch.setattr(g, "_gonder", sahte_gonder)
 
 
@@ -253,7 +253,7 @@ def test_tek_bozuk_kayit_gondericiyi_durdurmaz(tmp_path, monkeypatch):
     def sahte_gonder(ayarlar, govde):
         if govde["captureId"] == bozuk_capture:
             raise ValueError("beklenmeyen")
-        return 201
+        return 201, ""
     monkeypatch.setattr(g, "_gonder", sahte_gonder)
 
     log = SahteLog()
@@ -366,7 +366,8 @@ def _govde(ortam, **ayar_ustu):
 def test_govde_tam_olarak_beklenen_alanlari_icerir(ortam):
     govde = _govde(ortam)
     assert set(govde) == {"captureId", "kameraKodu", "kameraId", "yatakEslesmeKodu",
-                          "goruntuCekilmeZamani", "goruntuFormati", "goruntuBase64"}
+                          "goruntuCekilmeZamani", "okumaGrupId", "goruntuFormati",
+                          "goruntuBase64"}
 
 
 def test_govde_alan_tipleri(ortam):
@@ -387,18 +388,20 @@ def test_kamera_ve_yatak_kodlari_bizdeki_degerlerden_gelir(ortam):
     assert govde["kameraId"] == 7
 
 
-def test_zaman_bicimi_milisaniyeli_ve_dilimsiz(ortam):
-    """2026-10-01T10:00:00.000 — 3 hane ms, sonda Z ya da +03:00 YOK."""
+def test_zaman_bicimi_iso8601_offsetli(ortam):
+    """Backend ISO-8601 offset'li bekler: 2026-10-01T10:00:00.000+03:00"""
     zaman = _govde(ortam)["goruntuCekilmeZamani"]
-    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}", zaman), zaman
-    assert not zaman.endswith("Z") and "+" not in zaman
-    assert zaman.startswith("2026-10-01T10:00:00")
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}[+-]\d\d:\d\d", zaman), zaman
+    assert zaman.startswith("2026-10-01T10:00:00.000")
+    assert datetime.fromisoformat(zaman).tzinfo is not None     # Python da çözebilmeli
 
 
-def test_zaman_milisaniyeyi_korur():
-    assert g.m4_zamani("2026-10-09 07:48:43", 650) == "2026-10-09T07:48:43.650"
-    assert g.m4_zamani("2026-10-09 07:48:43", 5) == "2026-10-09T07:48:43.005"
-    assert g.m4_zamani("2026-10-09 07:48:43", 0) == "2026-10-09T07:48:43.000"
+def test_zaman_milisaniye_ve_dilimi_korur():
+    assert g.m4_zamani("2026-10-09 07:48:43", 650, "+03:00") == "2026-10-09T07:48:43.650+03:00"
+    assert g.m4_zamani("2026-10-09 07:48:43", 5, "+03:00") == "2026-10-09T07:48:43.005+03:00"
+    assert g.m4_zamani("2026-10-09 07:48:43", 0, "+03:00") == "2026-10-09T07:48:43.000+03:00"
+    # Dilim kayıttan gelir; kodda sabit bir ülke yoktur
+    assert g.m4_zamani("2026-10-09 07:48:43", 0, "-05:00") == "2026-10-09T07:48:43.000-05:00"
 
 
 def test_cekim_milisaniyesi_veritabaninda_saklanir(tmp_path):
@@ -575,11 +578,27 @@ def test_zaman_asimi_tekrar_denenir(ortam, monkeypatch):
     assert olaylar()[-1]["seviye"] == "WARNING"
 
 
-def test_2xx_basarili_sayilir(ortam, monkeypatch):
+@pytest.mark.parametrize("kod", [200, 201])
+def test_200_ve_201_basarili_sayilir(ortam, monkeypatch, kod):
+    """201 = yeni kayıt, 200 = bu captureId daha önce alınmış. İkisi de kuyruktan çıkarır."""
     kayit_id, _, log, _ = ortam
-    api_cevabi(monkeypatch, kod=204)
+    api_cevabi(monkeypatch, kod=kod)
     g._kaydi_isle(kayit_id, AYARLAR, log)
     assert kayit(kayit_id)["durum"] == "gonderildi"
+
+
+def test_200_daha_once_alinmis_diye_loglanir(ortam, monkeypatch):
+    kayit_id, _, log, _ = ortam
+    api_cevabi(monkeypatch, kod=200)
+    g._kaydi_isle(kayit_id, AYARLAR, log)
+    assert any("daha önce alınmış" in m for m in log.mesajlar)
+
+
+def test_201_de_bu_not_yazilmaz(ortam, monkeypatch):
+    kayit_id, _, log, _ = ortam
+    api_cevabi(monkeypatch, kod=201)
+    g._kaydi_isle(kayit_id, AYARLAR, log)
+    assert not any("daha önce alınmış" in m for m in log.mesajlar)
 
 
 def test_bozuk_goruntu_kuyruktan_cikar(ortam, monkeypatch):
@@ -591,3 +610,73 @@ def test_bozuk_goruntu_kuyruktan_cikar(ortam, monkeypatch):
     g._kaydi_isle(kayit_id, AYARLAR, log)
     assert kayit(kayit_id)["durum"] == "hatali"
     assert "JPEG'e çevrilemedi" in olaylar()[-1]["mesaj"]
+
+
+# ---------- 415 ve yanıt özeti ----------
+#
+# 415 Unsupported Media Type: gövde multipart gönderilirse Spring'in @RequestBody ucu
+# bunu döndürür. Bir kez başımıza geldi; artık tekrar denenmiyor ve sebebi loga yazılıyor.
+
+def test_415_tekrar_denenmez_ve_kirmizi_loglanir(ortam, monkeypatch):
+    kayit_id, _, log, _ = ortam
+    api_cevabi(monkeypatch, kod=415, ozet='{"hata":"Unsupported Media Type: multipart/form-data"}')
+    g._kaydi_isle(kayit_id, AYARLAR, log)
+    assert kayit(kayit_id)["durum"] == "hatali"
+    son = olaylar()[-1]
+    assert son["seviye"] == "ERROR"
+    assert "HTTP 415" in son["mesaj"]
+    assert "Unsupported Media Type" in son["mesaj"]      # yanıttaki sebep görünür
+
+
+@pytest.mark.parametrize("kod", [400, 401, 403, 404, 415])
+def test_4xx_hicbiri_tekrar_denenmez(ortam, monkeypatch, kod):
+    kayit_id, _, log, _ = ortam
+    api_cevabi(monkeypatch, kod=kod)
+    g._kaydi_isle(kayit_id, AYARLAR, log)
+    assert kayit(kayit_id)["durum"] == "hatali"
+
+
+def test_yanit_ozeti_loga_yazilir(ortam, monkeypatch):
+    kayit_id, _, log, _ = ortam
+    api_cevabi(monkeypatch, kod=400, ozet='{"yatakEslesmeKodu":"bulunamadi"}')
+    g._kaydi_isle(kayit_id, AYARLAR, log)
+    assert "yatakEslesmeKodu" in olaylar()[-1]["mesaj"]
+
+
+def test_yanit_ozeti_kisaltilir():
+    """Uzun yanıt loga sığmasın; kazara sır sızmasını da sınırlar."""
+    class Yanit:
+        text = "x" * 5000
+    ozet = g.yanit_ozeti(Yanit())
+    assert len(ozet) == g.YANIT_OZETI_UZUNLUGU
+
+
+def test_yanit_okunamazsa_bos_ozet():
+    class Yanit:
+        @property
+        def text(self):
+            raise RuntimeError("okunamadi")
+    assert g.yanit_ozeti(Yanit()) == ""
+
+
+def test_istek_json_olarak_gider_multipart_degil(ortam, monkeypatch):
+    """415'in sebebi buydu: gövde multipart gidiyordu."""
+    yakalanan = {}
+
+    class Yanit:
+        status_code = 201
+        text = "{}"
+
+    monkeypatch.setattr(g.requests, "post",
+                        lambda url, **k: yakalanan.update(k) or Yanit())
+    g._gonder(AYARLAR, {"a": 1})
+    assert "json" in yakalanan                      # json= kullanılıyor
+    assert "data" not in yakalanan and "files" not in yakalanan
+    assert yakalanan["headers"]["Content-Type"] == "application/json"
+
+
+def test_okuma_grup_id_cift_kimligidir(ortam):
+    """Aynı çekimin iki karesi aynı okumaGrupId'yi taşır."""
+    kayit_id, goruntu, _, _ = ortam
+    k = kayit(kayit_id)
+    assert g.m4_govdesi(k, 7, goruntu)["okumaGrupId"] == k["cift_id"]

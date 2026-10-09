@@ -25,19 +25,24 @@ AYAR_DOSYASI = Path(__file__).with_name("ayarlar.test.json")
 HATA_ORANI = 0.2
 gorulen = set()
 
-# "2026-10-09T07:48:43.650" — 3 haneli milisaniye, saat dilimi eki YOK
-ZAMAN_DESENI = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}$")
+# ISO-8601, offset'li: "2026-10-09T07:48:43.650+03:00" (Z ya da offset'siz de kabul)
+ZAMAN_DESENI = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,9})?(Z|[+-]\d\d:\d\d)?$")
 
 # alan adı -> beklenen Python tipi
+# Gerçek backend'in DTO'su: MonitorGoruntuIstekDTO.SabitKamera
 ALANLAR = {
     "captureId": str,
     "kameraKodu": str,
-    "kameraId": int,
-    "yatakEslesmeKodu": str,
+    "kameraId": int,                 # Long
+    "yatakEslesmeKodu": str,         # @NotBlank
     "goruntuCekilmeZamani": str,
+    "okumaGrupId": str,
     "goruntuFormati": str,
-    "goruntuBase64": str,
+    "goruntuBase64": str,            # @NotBlank
 }
+
+# @NotBlank olanlar boş olamaz; diğer metinler boş gelebilir
+ZORUNLU_DOLU = ("yatakEslesmeKodu", "goruntuBase64")
 
 
 def beklenen_anahtar() -> str:
@@ -67,12 +72,12 @@ def govdeyi_dogrula(govde) -> str | None:
             return f"{ad} sayı olmalı (tırnaksız)"
         if tip is str and not isinstance(deger, str):
             return f"{ad} metin olmalı"
-        if tip is str and not deger.strip():
-            return f"{ad} boş olamaz"
+        if ad in ZORUNLU_DOLU and not deger.strip():
+            return f"{ad} boş olamaz (@NotBlank)"
 
     if not ZAMAN_DESENI.match(govde["goruntuCekilmeZamani"]):
-        return ("goruntuCekilmeZamani biçimi YYYY-MM-DDTHH:MM:SS.mmm olmalı "
-                "(3 haneli milisaniye, saat dilimi eki yok)")
+        return ("goruntuCekilmeZamani ISO-8601 olmalı, "
+                "ör. 2026-10-09T07:48:43.650+03:00")
     if govde["goruntuFormati"] != "jpeg":
         return "goruntuFormati 'jpeg' olmalı"
     if govde["goruntuBase64"].startswith("data:"):
@@ -86,16 +91,18 @@ def govdeyi_dogrula(govde) -> str | None:
     return None
 
 
-@app.post("/api/goruntu")
+@app.post("/monitor-okuma/kamera")
+@app.post("/api/goruntu")                # eski ayarlar bozulmasın diye ikisi de dinlenir
 def goruntu():
     if request.headers.get("X-Api-Key") != beklenen_anahtar():
         print("REDDEDILDI 401 | X-Api-Key yanlış ya da eksik")
         return jsonify(hata="yetkisiz"), 401
 
+    # Spring'in @RequestBody ucu JSON olmayan gövdeye 415 döndürür (multipart gönderilirse de)
     tur = (request.headers.get("Content-Type") or "").split(";")[0].strip()
     if tur != "application/json":
-        print(f"REDDEDILDI 400 | Content-Type 'application/json' olmalı, gelen: {tur!r}")
-        return jsonify(hata="Content-Type application/json olmalı"), 400
+        print(f"REDDEDILDI 415 | Content-Type 'application/json' olmalı, gelen: {tur!r}")
+        return jsonify(hata=f"Unsupported Media Type: {tur or '(yok)'}"), 415
 
     govde = request.get_json(silent=True)
     sebep = govdeyi_dogrula(govde)
@@ -106,15 +113,17 @@ def goruntu():
     if random.random() < HATA_ORANI:
         return jsonify(hata="gecici sunucu hatasi"), 503
 
+    # Gerçek backend gibi: aynı captureId ikinci kez gelirse 200, yenisi 201
     if govde["captureId"] in gorulen:
-        return jsonify(durum="zaten alindi"), 200
+        print(f"ZATEN VAR 200 | capture={govde['captureId'][:8]}…")
+        return jsonify(durum="zaten alindi", captureId=govde["captureId"]), 200
     gorulen.add(govde["captureId"])
 
     kb = len(base64.b64decode(govde["goruntuBase64"])) / 1024
     print(f"ALINDI {govde['kameraKodu']}/{govde['yatakEslesmeKodu']} "
           f"kameraId={govde['kameraId']} zaman={govde['goruntuCekilmeZamani']} "
           f"{kb:.1f} KB  capture={govde['captureId'][:8]}…")
-    return jsonify(durum="ok"), 201
+    return jsonify(durum="ok", captureId=govde["captureId"]), 201
 
 
 if __name__ == "__main__":

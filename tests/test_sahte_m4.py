@@ -39,7 +39,8 @@ def gecerli():
         "kameraKodu": "K1",
         "kameraId": 1,
         "yatakEslesmeKodu": "Y1",
-        "goruntuCekilmeZamani": "2026-10-09T07:48:43.650",
+        "goruntuCekilmeZamani": "2026-10-09T07:48:43.650+03:00",
+        "okumaGrupId": "H01_K1_Y1_2026-10-09_07-48-43",
         "goruntuFormati": "jpeg",
         "goruntuBase64": jpeg_b64(),
     }
@@ -50,7 +51,8 @@ def test_gecerli_govde_kabul_edilir(m4, gecerli):
 
 
 @pytest.mark.parametrize("alan", ["captureId", "kameraKodu", "kameraId", "yatakEslesmeKodu",
-                                  "goruntuCekilmeZamani", "goruntuFormati", "goruntuBase64"])
+                                  "goruntuCekilmeZamani", "okumaGrupId", "goruntuFormati",
+                                  "goruntuBase64"])
 def test_eksik_alan_reddedilir(m4, gecerli, alan):
     gecerli.pop(alan)
     sebep = m4.govdeyi_dogrula(gecerli)
@@ -73,17 +75,16 @@ def test_kamera_id_bool_olursa_reddedilir(m4, gecerli):
     assert "sayı olmalı" in m4.govdeyi_dogrula(gecerli)
 
 
-def test_bos_metin_reddedilir(m4, gecerli):
-    gecerli["kameraKodu"] = "  "
+@pytest.mark.parametrize("alan", ["yatakEslesmeKodu", "goruntuBase64"])
+def test_notblank_alanlar_bos_olamaz(m4, gecerli, alan):
+    gecerli[alan] = "  "
     assert "boş olamaz" in m4.govdeyi_dogrula(gecerli)
 
 
 @pytest.mark.parametrize("zaman", [
-    "2026-10-09T07:48:43",                 # milisaniye yok
-    "2026-10-09T07:48:43.65",              # 2 hane
-    "2026-10-09T07:48:43.650Z",            # Z eki
-    "2026-10-09T07:48:43.650+03:00",       # dilim eki
     "2026-10-09 07:48:43.650",             # T yok
+    "09.10.2026 07:48:43",                 # ISO değil
+    "dun",                                 # tamamen yanlış
 ])
 def test_yanlis_zaman_bicimi_reddedilir(m4, gecerli, zaman):
     gecerli["goruntuCekilmeZamani"] = zaman
@@ -167,3 +168,39 @@ def test_yanlis_tip_400(m4, istemci, gecerli):
 def test_ayni_capture_id_ikinci_kez_200(m4, istemci, gecerli):
     assert istemci.post("/api/goruntu", json=gecerli, headers=_basliklar(m4)).status_code == 201
     assert istemci.post("/api/goruntu", json=gecerli, headers=_basliklar(m4)).status_code == 200
+
+
+# ---------- Backend gibi davranıyor mu? ----------
+
+def test_json_olmayan_govde_415(m4, istemci, gecerli):
+    """Spring'in @RequestBody ucu multipart gövdeye 415 döndürür; 415'in sebebi buydu."""
+    y = istemci.post("/monitor-okuma/kamera",
+                     data={"captureId": "x"},                  # multipart/form-data
+                     headers={"X-Api-Key": m4.beklenen_anahtar()})
+    assert y.status_code == 415
+    assert "Unsupported Media Type" in y.get_json()["hata"]
+
+
+def test_backend_yolu_dinleniyor(m4, istemci, gecerli):
+    assert istemci.post("/monitor-okuma/kamera", json=gecerli,
+                        headers=_basliklar(m4)).status_code == 201
+
+
+def test_yeni_capture_201_tekrar_200(m4, istemci, gecerli):
+    assert istemci.post("/monitor-okuma/kamera", json=gecerli,
+                        headers=_basliklar(m4)).status_code == 201
+    y = istemci.post("/monitor-okuma/kamera", json=gecerli, headers=_basliklar(m4))
+    assert y.status_code == 200
+    assert y.get_json()["captureId"] == gecerli["captureId"]
+
+
+def test_offsetli_zaman_kabul_edilir(m4, gecerli):
+    gecerli["goruntuCekilmeZamani"] = "2026-10-09T07:48:43.650+03:00"
+    assert m4.govdeyi_dogrula(gecerli) is None
+
+
+def test_notblank_bos_gelirse_400(m4, istemci, gecerli):
+    gecerli["yatakEslesmeKodu"] = ""
+    y = istemci.post("/monitor-okuma/kamera", json=gecerli, headers=_basliklar(m4))
+    assert y.status_code == 400
+    assert "yatakEslesmeKodu" in y.get_json()["hata"]
