@@ -40,7 +40,7 @@ def test_kayitlar_tablosunun_sutunlari():
     assert sutunlar == ["kayit_id", "cift_id", "tesis_kodu", "kamera_kodu", "yatak_kodu",
                         "cekim_zamani", "saat_dilimi", "sira", "dosya_yolu", "dosya_boyutu",
                         "durum", "deneme", "sonraki_deneme", "son_hata", "gonderim_zamani",
-                        "kaynak", "yukleyen"]
+                        "kaynak", "yukleyen", "capture_id", "cekim_ms"]
 
 
 def test_yeni_veritabani_son_surumle_baslar():

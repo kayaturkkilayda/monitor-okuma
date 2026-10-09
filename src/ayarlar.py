@@ -1,12 +1,38 @@
-"""Ayar dosyasını okuma, yazma ve kameraları oluşturma."""
+"""Ayar dosyasını okuma, yazma, ilk kez oluşturma ve kameraları oluşturma."""
 import copy
 import json
+import os
 from pathlib import Path
 
 from kamera import IPKamera, Kamera
 from sifreleme import coz, sifrele
 
 AYAR_DOSYASI = Path("config/ayarlar.json")
+ORNEK_DOSYASI = Path("config/ayarlar.ornek.json")
+
+# Şablon dosyası da yoksa kullanılacak varsayılanlar. Adres ve anahtar BOŞ gelir;
+# kullanıcı bunları arayüzdeki Ayarlar sekmesinden girer.
+VARSAYILAN_AYARLAR = {
+    "tesis_kodu": "ORNEK",
+    "api_url": "",
+    "api_key": "",
+    "gonderim_araligi_sn": 60,
+    "ikinci_cekim_gecikme_sn": 5,
+    "format": "avif",
+    "kalite": 85,
+    "saklama_gun": 7,
+    "kayit_saklama_gun": 90,
+    "gonderilince_sil": True,
+    "telefon_yukleme": {"acik": False, "port": 8099},
+    "izin_verilen_alan_adi": [],
+    "smtp": {"sunucu": "", "port": 587, "guvenlik": "STARTTLS",
+             "kullanici": "", "sifre": "", "varsayilan_alici": ""},
+    "kameralar": [],
+}
+
+# Yeni dosyada her zaman boş olması gereken alanlar. Şablon elle değiştirilmiş olsa
+# bile buraya bir adres ya da anahtar sızmasın diye zorlanır.
+BOS_BASLATILANLAR = ("api_url", "api_key")
 
 
 def _gizli_alanlara_uygula(ayarlar: dict, islem) -> dict:
@@ -23,6 +49,55 @@ def _gizli_alanlara_uygula(ayarlar: dict, islem) -> dict:
         if "sifre" in k:
             k["sifre"] = islem(k["sifre"])
     return sonuc
+
+
+def _baslangic_ayarlari(ornek: Path) -> dict:
+    """Yeni ayar dosyasının içeriği: şablon varsa ondan, yoksa koddaki varsayılanlardan."""
+    try:
+        d = json.loads(Path(ornek).read_text(encoding="utf-8"))
+        if not isinstance(d, dict):
+            raise ValueError("şablon bir nesne değil")
+    except (OSError, ValueError):
+        d = copy.deepcopy(VARSAYILAN_AYARLAR)
+    for ad in BOS_BASLATILANLAR:
+        d[ad] = ""
+    if isinstance(d.get("smtp"), dict):
+        d["smtp"]["sifre"] = ""
+    return d
+
+
+def ayarlari_hazirla(yol: Path = AYAR_DOSYASI, ornek: Path = ORNEK_DOSYASI) -> bool:
+    """Ayar dosyası yoksa oluşturur. Varsa DOKUNMAZ. True = bu çağrı oluşturdu.
+
+    Kullanıcının şablonu elle kopyalaması gerekmesin diye hem motor hem arayüz açılışta
+    bunu çağırır. İkisi aynı anda açılabilir: dosya O_EXCL ile oluşturulur, yani
+    "yoksa oluştur" adımı tek ve bölünmez bir işlemdir; yarışı kim kazanırsa dosyayı o
+    yazar, diğeri False alır ve var olan dosyaya dokunmaz.
+
+    Oluşturma yarıda kesilirse geriye 0 baytlık bir dosya kalabilir; bu, hiç ayarı olmayan
+    bir kurulum demektir ve bir sonraki açılışta yeniden oluşturulur. Dolu bir dosyaya
+    hiçbir koşulda dokunulmaz.
+    """
+    yol = Path(yol)
+    try:
+        if yol.stat().st_size > 0:
+            return False                      # kullanıcının ayarları duruyor
+        yol.unlink()                          # yarım kalmış oluşturmadan artan boş dosya
+    except OSError:
+        pass                                  # dosya yok ya da okunamadı; oluşturmayı dene
+
+    icerik = json.dumps(_baslangic_ayarlari(ornek), ensure_ascii=False, indent=2) + "\n"
+    yol.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        # O_EXCL: dosya zaten varsa hata verir. İki süreç aynı anda denerse yalnızca biri açar.
+        tutamac = os.open(yol, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return False                          # yarışı başka süreç kazandı
+    with os.fdopen(tutamac, "w", encoding="utf-8") as f:
+        f.write(icerik)
+        f.flush()
+        os.fsync(f.fileno())                  # elektrik kesilirse yarım dosya kalmasın
+    return True
 
 
 def ayarlari_oku(yol: Path = AYAR_DOSYASI) -> dict:

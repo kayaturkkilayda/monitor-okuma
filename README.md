@@ -129,7 +129,7 @@ monitor-okuma/
 ├── araclar/                 sahte kamera + sahte M4 (yalnızca test; üründe kurulmaz)
 │   └── elle_denemeler/      projenin ilk günlerinden elle deneme betikleri
 ├── config/
-│   └── ayarlar.ornek.json   ayar şablonu (sır içermez)
+│   └── ayarlar.ornek.json   ayar şablonu; ayarlar.json ilk açılışta buradan üretilir
 ├── docs/ekranlar/           README'deki ekran görüntüleri
 ├── motor.spec, arayuz.spec  PyInstaller derleme reçeteleri
 ├── requirements.txt         çalışma paketleri (sürümler sabit)

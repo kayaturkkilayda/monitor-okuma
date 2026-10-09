@@ -13,7 +13,7 @@ from PIL import Image
 KOK = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 os.chdir(KOK)
 sys.path.insert(0, str(KOK / "src"))
-from ayarlar import ayarlari_oku, ayarlari_yaz, kameralari_olustur
+from ayarlar import AYAR_DOSYASI, ayarlari_hazirla, ayarlari_oku, ayarlari_yaz, kameralari_olustur
 from arka_plan import arka_planda
 from ayar_sekmesi import AyarSekmesi
 import kamera_onay
@@ -124,16 +124,18 @@ class KameraFormu(tk.Toplevel):
     bildirimler Ayarlar'daki varsayılan adrese, onay kodu ise giriş yapan kullanıcıya gider.
     """
 
-    ALANLAR = [("kod", "Kamera kodu"), ("yatak", "Yatak kodu"), ("adres", "Adres"),
-               ("kullanici", "Kullanıcı adı"), ("sifre", "Şifre")]
+    ALANLAR = [("kod", "Kamera kodu"), ("yatak", "Yatak kodu"), ("m4_id", "M4 kamera ID"),
+               ("adres", "Adres"), ("kullanici", "Kullanıcı adı"), ("sifre", "Şifre")]
 
-    BILGI_ALANLARI = ("kod", "yatak", "adres")
+    BILGI_ALANLARI = ("kod", "yatak", "m4_id", "adres")
     GIRIS_ALANLARI = ("kullanici", "sifre")
     IPUCU = "İsteğe bağlı"
 
     ACIKLAMA = {
         "kod": "Bu kameraya verdiğiniz kısa ad. Örnek: K1",
         "yatak": "Kameranın baktığı yatak. Örnek: Y1",
+        "m4_id": ("M4 sisteminin bu kameraya verdiği sayı. M4 ekibinden alınır. "
+                  "Boş bırakılırsa bu kameranın görüntüleri gönderilmez, kuyrukta bekler."),
         "kullanici": ("Kameranın kendi giriş adı. Sizin hesabınız değildir. "
                       "Kamera şifre istemiyorsa boş bırakın."),
         "sifre": "Kameranın kendi şifresi. Şifreli saklanır.",
@@ -222,6 +224,9 @@ class KameraFormu(tk.Toplevel):
             return "Kamera kodu boş olamaz."
         if not d["yatak"]:
             return "Yatak kodu boş olamaz."
+        # Boş bırakılabilir (M4 ID'si henüz bilinmiyor olabilir), ama girildiyse sayı olmalı
+        if d["m4_id"] and not d["m4_id"].isdigit():
+            return "M4 kamera ID bir sayı olmalı (ya da boş bırakılmalı)."
         if d["kod"] in self.diger:
             return f"{d['kod']} kodlu bir kamera zaten var."
         for kod, yatak in self.diger.items():
@@ -241,7 +246,7 @@ class KameraFormu(tk.Toplevel):
             messagebox.showerror("Hatalı giriş", hata, parent=self)
             return
         self.sonuc = {
-            "kod": d["kod"], "yatak": d["yatak"], "tip": tip,
+            "kod": d["kod"], "yatak": d["yatak"], "m4_id": d["m4_id"], "tip": tip,
             "adres": int(d["adres"]) if tip == "webcam" else d["adres"],
             "kullanici": d["kullanici"], "sifre": d["sifre"],
             "aktif": self.aktif.get(),
@@ -769,6 +774,12 @@ def giris_penceresi(log) -> dict | None:
 def calistir():
     tema.dpi_farkindaligini_ac()     # Tk penceresi açılmadan önce: yazılar bulanık olmasın
     log = log_kur(ad="arayuz", dosya_adi="arayuz.log")
+    # İlk açılış: kullanıcı şablonu elle kopyalamak zorunda kalmasın. Dosya varsa dokunulmaz.
+    try:
+        if ayarlari_hazirla():
+            olay(log, "INFO", "sistem", f"Ayar dosyası oluşturuldu: {AYAR_DOSYASI}")
+    except OSError:
+        olay(log, "ERROR", "sistem", "Ayar dosyası oluşturulamadı", ayrinti=True)
     try:                             # "Beni hatırla": bu cihazda açık kalan oturum varsa doğrudan aç
         oturum = oturum_deposu.hatirlanan_kullanici()
     except Exception:

@@ -138,7 +138,8 @@ def test_sunucu_bossa_kullanici_adi_zorunlu_degil():
 
 def _kamera_dogrula(**alanlar):
     import arayuz
-    d = {"kod": "K1", "yatak": "Y1", "adres": "http://x", "kullanici": "", "sifre": "", **alanlar}
+    d = {"kod": "K1", "yatak": "Y1", "m4_id": "1", "adres": "http://x",
+         "kullanici": "", "sifre": "", **alanlar}
     return arayuz.KameraFormu._dogrula(SimpleNamespace(diger={}), d, "ip")
 
 
@@ -148,12 +149,12 @@ def test_kamera_formunda_eposta_alani_yok():
     alan_adlari = [ad for ad, _ in arayuz.KameraFormu.ALANLAR]
     assert "bildirim_eposta" not in alan_adlari
     assert "onay_eposta" not in alan_adlari
-    assert alan_adlari == ["kod", "yatak", "adres", "kullanici", "sifre"]
+    assert alan_adlari == ["kod", "yatak", "m4_id", "adres", "kullanici", "sifre"]
 
 
 def test_kamera_alanlari_iki_gruba_ayrilmis():
     import arayuz
-    assert arayuz.KameraFormu.BILGI_ALANLARI == ("kod", "yatak", "adres")
+    assert arayuz.KameraFormu.BILGI_ALANLARI == ("kod", "yatak", "m4_id", "adres")
     assert arayuz.KameraFormu.GIRIS_ALANLARI == ("kullanici", "sifre")
 
 
@@ -178,3 +179,10 @@ def test_kamera_dogrulamasi_epostasiz_calisir():
     assert _kamera_dogrula() is None
     assert "boş olamaz" in _kamera_dogrula(kod="")
     assert "http://" in _kamera_dogrula(adres="10.0.0.5")
+
+
+def test_m4_kamera_id_bos_birakilabilir_ama_sayi_olmali():
+    """M4 ID'si henüz bilinmiyor olabilir; girildiyse sayı olmalı."""
+    assert _kamera_dogrula(m4_id="") is None
+    assert _kamera_dogrula(m4_id="42") is None
+    assert "sayı olmalı" in _kamera_dogrula(m4_id="abc")

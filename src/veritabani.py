@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS kayitlar (
     gonderim_zamani TEXT,
     kaynak          TEXT NOT NULL DEFAULT 'kamera'    -- 'kamera' ya da 'telefon'
                     CHECK (kaynak IN ('kamera', 'telefon')),
-    yukleyen        TEXT                              -- telefondan yükleyen kullanıcı
+    yukleyen        TEXT,                             -- telefondan yükleyen kullanıcı
+    capture_id      TEXT,                             -- M4'e giden UUID, tekrar denemede sabit
+    cekim_ms        INTEGER NOT NULL DEFAULT 0        -- çekim anının milisaniyesi (0-999)
 );
 CREATE INDEX IF NOT EXISTS ix_kayitlar_durum ON kayitlar (durum, sonraki_deneme);
 CREATE INDEX IF NOT EXISTS ix_kayitlar_cift ON kayitlar (cift_id);
@@ -119,17 +121,22 @@ _hazir_kilit = threading.Lock()
 
 
 def tablolari_olustur(db: sqlite3.Connection):
-    """Eksik tablo ve indeksleri, açık olan işlemin içinde oluşturur."""
+    """Eksik tablo ve indeksleri, açık olan işlemin içinde oluşturur.
+
+    SEMA noktalı virgülden bölünür: SQL açıklamalarında noktalı virgül KULLANILMAMALI,
+    yoksa komut ortasından bölünüp "incomplete input" hatası verir.
+    """
     for komut in SEMA.split(";"):
         if komut.strip():
             db.execute(komut)
 
 
 def _kayit_sutunlarini_guncelle(db: sqlite3.Connection) -> bool:
-    """Eski veritabanlarına kaynak ve yukleyen sütunlarını ekler.
+    """Eski veritabanlarına sonradan eklenen sütunları ekler.
 
     SQLite ALTER TABLE ADD COLUMN destekler; tabloyu yeniden kurmaya gerek yoktur.
-    Var olan kayıtlar 'kamera' kaynağıyla kalır.
+    Var olan kayıtlar bozulmaz: kaynak 'kamera', cekim_ms 0 olarak kalır ve kuyrukta
+    bekleyen eski kayıtlara birer capture_id üretilir (tekrar denemelerde sabit kalsın).
     """
     sutunlar = {s["name"] for s in db.execute("PRAGMA table_info(kayitlar)")}
     eklendi = False
@@ -138,6 +145,21 @@ def _kayit_sutunlarini_guncelle(db: sqlite3.Connection) -> bool:
         eklendi = True
     if "yukleyen" not in sutunlar:
         db.execute("ALTER TABLE kayitlar ADD COLUMN yukleyen TEXT")
+        eklendi = True
+    if "capture_id" not in sutunlar:
+        db.execute("ALTER TABLE kayitlar ADD COLUMN capture_id TEXT")
+        eklendi = True
+    if "cekim_ms" not in sutunlar:
+        db.execute("ALTER TABLE kayitlar ADD COLUMN cekim_ms INTEGER NOT NULL DEFAULT 0")
+        eklendi = True
+    # capture_id'si olmayan kayıtlara birer UUID yaz. Gönderilmiş kayıtlar da dahil:
+    # sonradan okunduğunda hangi çekim olduğu belli olsun.
+    import uuid
+    bossuz = db.execute("SELECT kayit_id FROM kayitlar WHERE capture_id IS NULL"
+                        " OR capture_id = ''").fetchall()
+    for satir in bossuz:
+        db.execute("UPDATE kayitlar SET capture_id = ? WHERE kayit_id = ?",
+                   (str(uuid.uuid4()), satir["kayit_id"]))
         eklendi = True
     return eklendi
 

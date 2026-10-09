@@ -9,7 +9,8 @@ KOK = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__f
 os.chdir(KOK)
 sys.path.insert(0, str(KOK / "src"))
 
-from ayarlar import AYAR_DOSYASI, ayarlari_oku, degisen_alanlar, kameralari_olustur
+from ayarlar import (AYAR_DOSYASI, ayarlari_hazirla, ayarlari_oku, degisen_alanlar,
+                     kameralari_olustur)
 from bildirim import Bildirici
 from durum import KameraDurumu
 from gecis import eski_kuyrugu_aktar, kamera_sahiplerini_ata, veritabanini_guncelle
@@ -87,6 +88,8 @@ except Exception:
     raise
 eski_kuyrugu_aktar(log)
 kamera_sahiplerini_ata(log)      # ayarları okumadan önce: boşuna yeniden başlatma olmasın
+if ayarlari_hazirla():           # ilk açılış: ayar dosyasını kullanıcı kopyalamak zorunda değil
+    olay(log, "INFO", "sistem", f"Ayar dosyası oluşturuldu: {AYAR_DOSYASI}")
 ayarlar = ayarlari_oku()
 bildirici = Bildirici(ayarlar, log)
 durum = KameraDurumu(log, bildirici)

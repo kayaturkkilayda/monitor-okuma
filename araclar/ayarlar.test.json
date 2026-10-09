@@ -23,6 +23,7 @@
     {
       "kod": "K1",
       "yatak": "Y1",
+      "m4_id": 1,
       "tip": "ip",
       "adres": "http://127.0.0.1:8080/K1/shot.jpg",
       "kullanici": "",

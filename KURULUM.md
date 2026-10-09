@@ -79,10 +79,14 @@ C:\MonitorOkuma\
   _arayuz\           ← arayuz.exe'nin parçaları
   araclar\           ← sahte kamera ve sahte M4 (deneme için)
   config\
-    ayarlar.ornek.json
+    ayarlar.ornek.json   ← şablon; elle kopyalamanız GEREKMEZ
   KURULUM.md
   README.md
 ```
+
+> `config\ayarlar.json` dosyasını göremezsiniz; henüz yoktur. Programı ilk açtığınızda
+> kendiliğinden oluşturulur ve içindeki adres/anahtar alanları boş gelir. Siz bunları
+> Ayarlar sekmesinden girersiniz.
 
 > **Önemli:** `_motor\` ve `_arayuz\` klasörleri programların çalışması için gereklidir.
 > Silmeyin, taşımayın, yeniden adlandırmayın.
@@ -411,9 +415,9 @@ kuyrukta bekler. Adresi girip kaydedin, motor 5 saniye içinde kendiliğinden fa
 
 ### "Ayarlar kaydedilemedi" / motor açılmıyor, şifreler çözülemiyor
 `config\ayarlar.json` dosyasını **başka bir bilgisayardan kopyaladıysanız** bu olur. Şifreler
-Windows DPAPI ile o bilgisayara bağlı olarak şifrelenir. Çözüm: `config\ayarlar.ornek.json`
-dosyasını `ayarlar.json` adıyla kopyalayın ve API anahtarı ile şifreleri bu bilgisayarda yeniden
-girin.
+Windows DPAPI ile o bilgisayara bağlı olarak şifrelenir. Çözüm: `config\ayarlar.json` dosyasını
+silin (ya da yedek olarak başka bir ada taşıyın). Program bir sonraki açılışta boş bir tane
+oluşturur; API anahtarı ile şifreleri bu bilgisayarda Ayarlar sekmesinden yeniden girin.
 
 ### Kayıt olurken "bu alan adı kabul edilmiyor" diyor
 **Ayarlar → Kayıt için izin verilen alan adları** listesinde o e-postanın alan adı yok. Yönetici
